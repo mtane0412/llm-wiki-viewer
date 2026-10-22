@@ -34,12 +34,26 @@ function percent(rate: number): string {
   return `${Math.round(rate * 100)}%`
 }
 
-/** 参加者の散布図です。グループごとに色分けします。 */
+/** 散布図の点の横に参加者の名前を書く、参加者の数の上限です。これより多いと名前が重なって読めなくなります。 */
+const MAX_CAPTIONED_PARTICIPANTS = 30
+
+/**
+ * 参加者の散布図です。グループごとに色分けします。
+ * 参加者が少ない場合は、誰がどこにいるかが分かるように、点の横に参加者の名前を書きます。
+ */
 function ParticipantScatterPlot({ analysis }: { analysis: VoteAnalysis }) {
   const summary = `${analysis.points.length} 人の参加者を、投票の傾向が近いほど近くに配置した散布図です。${analysis.groups
     .map((group) => `${groupName(group.id)}は ${group.participants.length} 人`)
     .join('、')}です。`
-  const points = analysis.points.map((point) => ({ key: point.participant, x: point.x, y: point.y, group: point.group, label: `${point.participant}（${groupName(point.group)}）` }))
+  const showCaptions = analysis.points.length <= MAX_CAPTIONED_PARTICIPANTS
+  const points = analysis.points.map((point) => ({
+    key: point.participant,
+    x: point.x,
+    y: point.y,
+    group: point.group,
+    label: `${point.participant}（${groupName(point.group)}）`,
+    caption: showCaptions ? point.participant : undefined,
+  }))
   return <ScatterPlot points={points} summary={summary} />
 }
 
@@ -140,8 +154,9 @@ export function VoteAnalysisView({ voteRows, commentTables }: VoteAnalysisViewPr
             <Section key={group.id} title={`${groupName(group.id)}（${group.participants.length} 人）`}>
               <p className="muted">
                 <span className="legend-swatch" style={{ background: groupColor(group.id) }} />
-                このグループで、ほかのグループより特に賛成・反対が多い意見です。
+                {`参加者: ${group.participants.join('、')}`}
               </p>
+              <p className="muted">このグループで、ほかのグループより特に賛成・反対が多い意見です。</p>
               {group.representative.length === 0 ? (
                 <p className="muted">ほかのグループと比べて特に賛成・反対が多い意見はありません。</p>
               ) : (

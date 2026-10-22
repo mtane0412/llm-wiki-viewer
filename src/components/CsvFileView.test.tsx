@@ -27,6 +27,19 @@ const votesCsv = [
   'p8,-1,-1,1,1,1',
 ].join('\n')
 
+/** votesCsv と同じ投票で、参加者に名前を付けた投票 CSV です。給食係の保護者が給食派、公園愛好会の会員が公園派です。 */
+const namedVotesCsv = [
+  'participant,c1,c2,c3,c4,c5',
+  '給食係の保護者1,1,1,-1,-1,1',
+  '給食係の保護者2,1,1,-1,-1,1',
+  '給食係の保護者3,1,1,-1,-1,1',
+  '給食係の保護者4,1,1,-1,-1,1',
+  '公園愛好会の会員1,-1,-1,1,1,1',
+  '公園愛好会の会員2,-1,-1,1,1,1',
+  '公園愛好会の会員3,-1,-1,1,1,1',
+  '公園愛好会の会員4,-1,-1,1,1,1',
+].join('\n')
+
 /** パスごとの CSV の内容を返す readText のテスト用の実装を作ります。 */
 function fakeReadText(files: Record<string, string>) {
   return vi.fn(async (path: string) => {
@@ -52,6 +65,42 @@ describe('CsvFileView', () => {
     // 2 つのグループが、それぞれ 4 人の区画として表示されます
     expect(screen.getAllByRole('region', { name: /グループ .（4 人）/ })).toHaveLength(2)
     expect(screen.getByRole('img', { name: /8 人の参加者/ })).toBeInTheDocument()
+  })
+
+  it('投票 CSV では、意見グループの区画に、そのグループに入った参加者の名前を並べる', async () => {
+    const readText = fakeReadText({ 'raw/survey/votes.csv': namedVotesCsv, 'raw/survey/comments.csv': commentsCsv })
+    render(<CsvFileView path="raw/survey/votes.csv" index={indexWith(['raw/survey/votes.csv', 'raw/survey/comments.csv'])} readText={readText} />)
+
+    const groups = await screen.findAllByRole('region', { name: /グループ .（4 人）/ })
+    const lunchGroup = groups.find((group) => within(group).queryByText(/給食係の保護者1/))
+    // 前提: 給食派の 4 人は同じグループに入ります
+    expect(lunchGroup).toBeDefined()
+    expect(lunchGroup).toHaveTextContent('参加者: 給食係の保護者1、給食係の保護者2、給食係の保護者3、給食係の保護者4')
+    expect(lunchGroup).not.toHaveTextContent('公園愛好会の会員1')
+  })
+
+  it('参加者が少ない投票 CSV では、散布図の点の横に参加者の名前を書く', async () => {
+    const readText = fakeReadText({ 'raw/survey/votes.csv': namedVotesCsv, 'raw/survey/comments.csv': commentsCsv })
+    render(<CsvFileView path="raw/survey/votes.csv" index={indexWith(['raw/survey/votes.csv', 'raw/survey/comments.csv'])} readText={readText} />)
+
+    const plot = await screen.findByRole('img', { name: /8 人の参加者/ })
+    // 投票がまったく同じ参加者は同じ位置に重なるため、名前を重ねて書かず、1 か所にまとめて書きます
+    expect(within(plot).getByText('給食係の保護者1、給食係の保護者2、給食係の保護者3、給食係の保護者4', { selector: 'text' })).toBeInTheDocument()
+    expect(within(plot).getByText('公園愛好会の会員1、公園愛好会の会員2、公園愛好会の会員3、公園愛好会の会員4', { selector: 'text' })).toBeInTheDocument()
+    expect(plot.querySelectorAll('text')).toHaveLength(2)
+  })
+
+  it('参加者が多い投票 CSV では、名前が重なって読めなくなるため、散布図に名前を書かない', async () => {
+    // 31 人の参加者が、給食派と公園派に分かれて投票します
+    const manyVotesCsv = [
+      'participant,c1,c2,c3,c4,c5',
+      ...Array.from({ length: 31 }, (_, index) => (index % 2 === 0 ? `住民${index + 1},1,1,-1,-1,1` : `住民${index + 1},-1,-1,1,1,1`)),
+    ].join('\n')
+    const readText = fakeReadText({ 'raw/survey/votes.csv': manyVotesCsv, 'raw/survey/comments.csv': commentsCsv })
+    render(<CsvFileView path="raw/survey/votes.csv" index={indexWith(['raw/survey/votes.csv', 'raw/survey/comments.csv'])} readText={readText} />)
+
+    const plot = await screen.findByRole('img', { name: /31 人の参加者/ })
+    expect(plot.querySelectorAll('text')).toHaveLength(0)
   })
 
   it('投票 CSV の列名が意見 CSV に無い場合は、列を示してエラーを表示する', async () => {

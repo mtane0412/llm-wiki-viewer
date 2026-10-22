@@ -69,3 +69,39 @@ describe('LintView の index.md 未掲載', () => {
     expect(within(section).getByRole('link', { name: '記憶' })).toHaveAttribute('href', '#/v1/page/wiki/concepts/memory.md')
   })
 })
+
+describe('LintView の frontmatter の必須項目と type', () => {
+  /** スキーマの frontmatter の例に title・type・updated があり、type の選択肢が concept・source の Wiki です。 */
+  const checked = buildWikiIndex({
+    markdownFiles: [
+      { path: 'CLAUDE.md', content: '```yaml\n---\ntitle: 例\ntype: concept | source\nupdated: YYYY-MM-DD\n---\n```' },
+      { path: 'wiki/index.md', content: '[[concepts/no-updated]] [[concepts/typo]]' },
+      { path: 'wiki/concepts/no-updated.md', content: '---\ntitle: 更新日なし\ntype: concept\n---\n本文' },
+      { path: 'wiki/concepts/typo.md', content: '---\ntitle: 誤記\ntype: concpet\nupdated: 2026-10-20\n---\n本文' },
+    ],
+    unloadedMarkdownPaths: [],
+    assetPaths: [],
+  })
+
+  it('必須項目が欠けたページを、欠けた項目とともに表示する', () => {
+    render(<LintView index={checked} vaultId="v1" />)
+    const section = screen.getByRole('region', { name: /必須項目の欠け/ })
+    expect(within(section).getByRole('link', { name: '更新日なし' })).toBeInTheDocument()
+    expect(within(section).getByText('updated')).toBeInTheDocument()
+  })
+
+  it('type の値が選択肢に無いページを、その値とともに表示し、選択肢も示す', () => {
+    render(<LintView index={checked} vaultId="v1" />)
+    const section = screen.getByRole('region', { name: /type の値の誤り/ })
+    expect(within(section).getByRole('link', { name: '誤記' })).toBeInTheDocument()
+    expect(within(section).getByText('concpet')).toBeInTheDocument()
+    expect(section).toHaveTextContent('concept・source')
+  })
+
+  it('スキーマが無い Wiki では、判定していないことと理由を表示する', () => {
+    const withoutSchema = buildWikiIndex({ markdownFiles: [{ path: 'wiki/a.md', content: '本文' }], unloadedMarkdownPaths: [], assetPaths: [] })
+    render(<LintView index={withoutSchema} vaultId="v1" />)
+    const section = screen.getByRole('region', { name: /必須項目の欠け/ })
+    expect(within(section).getByText(/CLAUDE.md）を読み込んでいないため、判定していません/)).toBeInTheDocument()
+  })
+})

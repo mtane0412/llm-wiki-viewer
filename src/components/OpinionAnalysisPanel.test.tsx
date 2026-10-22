@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OpinionAnalysisContext, type OpinionAnalysisDeps } from '../app/opinionAnalysis'
 import type { Embedder, EmbeddingProgress } from '../embedding/embedder'
+import type { ChatMessage } from '../lib/clusterLabels'
+import type { Labeler, LabelerSupport } from '../llm/labeler'
 import { parseClusterJson } from '../lib/opinionClusters'
 import type { KeyValueStore } from '../source/vaultRegistry'
 import { buildWikiIndex } from '../lib/wikiIndex'
@@ -49,6 +51,23 @@ function createFakeEmbedder(): Embedder & { embed: ReturnType<typeof vi.fn> } {
   }
 }
 
+/**
+ * LLM の代わりです。給食の意見を渡されたら給食の、それ以外なら公園のラベルを JSON で返します。
+ * support で、この環境でラベルを生成できるかの判定を指定します。
+ */
+function createFakeLabeler(support: LabelerSupport = { ok: true }): Labeler & { generate: ReturnType<typeof vi.fn> } {
+  return {
+    modelId: 'テスト用の LLM',
+    downloadSizeLabel: '約 490 MB',
+    checkSupport: vi.fn(async () => support),
+    generate: vi.fn(async (messages: ChatMessage[]) =>
+      messages.some((message) => message.content.includes('給食'))
+        ? '{"label": "給食の改善", "description": "給食の費用と内容の改善を求める意見です。"}'
+        : '{"label": "公園の整備", "description": "公園の数と設備の充実を求める意見です。"}',
+    ),
+  }
+}
+
 /** 意見 CSV の画面を、意見の分析の依存とともに描画します。 */
 function renderPanel(deps: OpinionAnalysisDeps) {
   return render(
@@ -64,14 +83,14 @@ afterEach(() => {
 
 describe('意見 CSV の意見の分析', () => {
   it('分析する前に、モデルの初回のダウンロードの大きさを示す', async () => {
-    renderPanel({ embedder: createFakeEmbedder(), cache: createMemoryStore() })
+    renderPanel({ embedder: createFakeEmbedder(), labeler: createFakeLabeler(), cache: createMemoryStore() })
     expect(await screen.findByRole('button', { name: '意見を分析' })).toBeInTheDocument()
     expect(screen.getByText(/約 44 MB/)).toBeInTheDocument()
   })
 
   it('分析すると意見をクラスタに分け、クラスタを選ぶと属する意見の原文を comment-id 付きで一覧する', async () => {
     const user = userEvent.setup()
-    renderPanel({ embedder: createFakeEmbedder(), cache: createMemoryStore() })
+    renderPanel({ embedder: createFakeEmbedder(), labeler: createFakeLabeler(), cache: createMemoryStore() })
     await user.click(await screen.findByRole('button', { name: '意見を分析' }))
     // 前提: 既定のクラスタ数は、意見が 5 件なので 5 になります。2 つに分けるために 2 を選びます
     await user.selectOptions(await screen.findByRole('combobox', { name: 'クラスタ数' }), '2')
@@ -90,12 +109,12 @@ describe('意見 CSV の意見の分析', () => {
     const embedder = createFakeEmbedder()
     const cache = createMemoryStore()
     const user = userEvent.setup()
-    const { unmount } = renderPanel({ embedder, cache })
+    const { unmount } = renderPanel({ embedder, labeler: createFakeLabeler(), cache })
     await user.click(await screen.findByRole('button', { name: '意見を分析' }))
     await screen.findByRole('combobox', { name: 'クラスタ数' })
     unmount()
 
-    renderPanel({ embedder, cache })
+    renderPanel({ embedder, labeler: createFakeLabeler(), cache })
     // 前提: 2 回目はボタンを押さなくても、キャッシュから結果を表示します
     expect(await screen.findByRole('combobox', { name: 'クラスタ数' })).toBeInTheDocument()
     expect(embedder.embed).toHaveBeenCalledTimes(1)
@@ -109,7 +128,7 @@ describe('意見 CSV の意見の分析', () => {
       return new Promise(() => {})
     })
     const user = userEvent.setup()
-    renderPanel({ embedder, cache: createMemoryStore() })
+    renderPanel({ embedder, labeler: createFakeLabeler(), cache: createMemoryStore() })
     await user.click(await screen.findByRole('button', { name: '意見を分析' }))
     expect(await screen.findByRole('progressbar', { name: 'モデルのダウンロード' })).toHaveAttribute('aria-valuenow', '50')
     expect(screen.getByText(/22\.0 \/ 44\.0 MB/)).toBeInTheDocument()
@@ -119,7 +138,7 @@ describe('意見 CSV の意見の分析', () => {
     const embedder = createFakeEmbedder()
     embedder.embed.mockRejectedValue(new Error('モデルを取得できません'))
     const user = userEvent.setup()
-    renderPanel({ embedder, cache: createMemoryStore() })
+    renderPanel({ embedder, labeler: createFakeLabeler(), cache: createMemoryStore() })
     await user.click(await screen.findByRole('button', { name: '意見を分析' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('モデルを取得できません')
   })
@@ -130,14 +149,14 @@ describe('意見 CSV の意見の分析', () => {
       throw new Error('容量が足りません')
     })
     const user = userEvent.setup()
-    renderPanel({ embedder: createFakeEmbedder(), cache })
+    renderPanel({ embedder: createFakeEmbedder(), labeler: createFakeLabeler(), cache })
     await user.click(await screen.findByRole('button', { name: '意見を分析' }))
     expect(await screen.findByRole('combobox', { name: 'クラスタ数' })).toBeInTheDocument()
     expect(screen.getByText(/キャッシュに保存できませんでした.*容量が足りません/)).toBeInTheDocument()
   })
 
   it('意見 CSV の内容が変わると、前の内容の分析結果を使わずに分析し直せる状態に戻る', async () => {
-    const deps = { embedder: createFakeEmbedder(), cache: createMemoryStore() }
+    const deps = { embedder: createFakeEmbedder(), labeler: createFakeLabeler(), cache: createMemoryStore() }
     const comments = [
       { id: 'c1', body: '給食を無償にしてほしい', attributes: {} },
       { id: 'c2', body: '公園を増やしたい', attributes: {} },
@@ -166,7 +185,7 @@ describe('意見 CSV の意見の分析', () => {
     URL.revokeObjectURL = vi.fn()
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     const user = userEvent.setup()
-    renderPanel({ embedder: createFakeEmbedder(), cache: createMemoryStore() })
+    renderPanel({ embedder: createFakeEmbedder(), labeler: createFakeLabeler(), cache: createMemoryStore() })
     await user.click(await screen.findByRole('button', { name: '意見を分析' }))
     await user.click(await screen.findByRole('button', { name: 'JSON を書き出す' }))
 
@@ -175,5 +194,83 @@ describe('意見 CSV の意見の分析', () => {
     expect(exported.modelId).toBe('テスト用の埋め込みモデル')
     expect(exported.source).toBe(path)
     expect(exported.result.comments).toHaveLength(5)
+  })
+})
+
+describe('意見クラスタのラベル付け', () => {
+  /** 意見を分析し、クラスタ数を 2 にするまでの操作です。 */
+  async function analyzeIntoTwoClusters(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole('button', { name: '意見を分析' }))
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'クラスタ数' }), '2')
+  }
+
+  it('LLM が生成したラベルと説明を、LLM の要約であることと根拠にした意見の comment-id とともに表示する', async () => {
+    const user = userEvent.setup()
+    renderPanel({ embedder: createFakeEmbedder(), labeler: createFakeLabeler(), cache: createMemoryStore() })
+    await analyzeIntoTwoClusters(user)
+    await user.click(screen.getByRole('button', { name: 'ラベルを生成' }))
+
+    await user.click(await screen.findByRole('button', { name: /給食の改善（3 件）/ }))
+    expect(screen.getByText('給食の費用と内容の改善を求める意見です。')).toBeInTheDocument()
+    expect(screen.getByText('LLM が生成した要約')).toBeInTheDocument()
+    const basis = screen.getByRole('list', { name: 'クラスタ 1 のラベルの根拠にした意見' })
+    expect(within(basis).getByText('c1')).toBeInTheDocument()
+    expect(within(basis).getByText('給食を無償にしてほしい')).toBeInTheDocument()
+  })
+
+  it('WebGPU が使えない環境では、ラベル付けを実行できない理由を表示し、クラスタはラベル無しで使える', async () => {
+    const user = userEvent.setup()
+    const labeler = createFakeLabeler({ ok: false, reason: 'このブラウザは WebGPU に対応していません。' })
+    renderPanel({ embedder: createFakeEmbedder(), labeler, cache: createMemoryStore() })
+    await analyzeIntoTwoClusters(user)
+    expect(await screen.findByText('このブラウザは WebGPU に対応していません。')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'ラベルを生成' })).toBeNull()
+    expect(screen.getByRole('button', { name: /クラスタ 1（3 件）/ })).toBeInTheDocument()
+  })
+
+  it('LLM の出力が想定の形式でないクラスタは、空のラベルにせず失敗として表示する', async () => {
+    const user = userEvent.setup()
+    const labeler = createFakeLabeler()
+    labeler.generate.mockImplementation(async (messages: ChatMessage[]) =>
+      messages.some((message) => message.content.includes('給食')) ? '{"label": "給食の改善", "description": "給食の意見です。"}' : '公園についての意見です',
+    )
+    renderPanel({ embedder: createFakeEmbedder(), labeler, cache: createMemoryStore() })
+    await analyzeIntoTwoClusters(user)
+    await user.click(screen.getByRole('button', { name: 'ラベルを生成' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/クラスタ 2 のラベルを生成できませんでした.*JSON/)
+    expect(screen.getByRole('button', { name: /給食の改善（3 件）/ })).toBeInTheDocument()
+  })
+
+  it('生成したラベルはキャッシュし、同じ入力とクラスタ数では LLM を呼ばずに表示する', async () => {
+    const deps = { embedder: createFakeEmbedder(), labeler: createFakeLabeler(), cache: createMemoryStore() }
+    const user = userEvent.setup()
+    const { unmount } = renderPanel(deps)
+    await analyzeIntoTwoClusters(user)
+    await user.click(screen.getByRole('button', { name: 'ラベルを生成' }))
+    await screen.findByRole('button', { name: /給食の改善/ })
+    unmount()
+
+    renderPanel(deps)
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'クラスタ数' }), '2')
+    expect(await screen.findByRole('button', { name: /給食の改善/ })).toBeInTheDocument()
+    // 前提: 1 回目の生成でクラスタ 2 つ分の 2 回だけ呼ばれています
+    expect(deps.labeler.generate).toHaveBeenCalledTimes(2)
+  })
+
+  it('書き出す JSON に、生成したラベルを含める', async () => {
+    const createObjectURL = vi.fn((_blob: Blob) => 'blob:結果')
+    URL.createObjectURL = createObjectURL
+    URL.revokeObjectURL = vi.fn()
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const user = userEvent.setup()
+    renderPanel({ embedder: createFakeEmbedder(), labeler: createFakeLabeler(), cache: createMemoryStore() })
+    await analyzeIntoTwoClusters(user)
+    await user.click(screen.getByRole('button', { name: 'ラベルを生成' }))
+    await screen.findByRole('button', { name: /給食の改善/ })
+    await user.click(screen.getByRole('button', { name: 'JSON を書き出す' }))
+
+    const exported = parseClusterJson(await createObjectURL.mock.calls[0][0].text())
+    expect(exported.labelModelId).toBe('テスト用の LLM')
+    expect(exported.labels.map((label) => label.label).sort()).toEqual(['公園の整備', '給食の改善'])
   })
 })

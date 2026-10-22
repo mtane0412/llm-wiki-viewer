@@ -2,11 +2,12 @@
  * 広聴AI 風の意見クラスタを作るモジュールです（埋め込み以降の計算）。
  *
  * 埋め込みモデルが出した意見のベクトルを、k-means で意味の近い意見のクラスタに分け、主成分分析で 2 次元の散布図の座標にします。
- * あわせて、分析結果のキャッシュのキー（入力の内容とモデルのハッシュ）と、結果の JSON の書き出し・読み込みを扱います。
+ * あわせて、分析結果のキャッシュのキー（入力の内容とモデルのハッシュ）と、結果（LLM が生成したクラスタのラベルを含む）の JSON の書き出し・読み込みを扱います。
  * 書き出した JSON を raw/ に置けば、モデル無しで結果を表示できます。
  *
  * 埋め込みモデル自体は src/embedding にあり、このモジュールはモデル無しでテストできます。乱数の種は固定し、同じ入力から同じ結果を返します。
  */
+import type { ClusterLabel } from './clusterLabels'
 import { kMeans, projectToPlane } from './clustering'
 import type { Comment } from './opinions'
 
@@ -102,17 +103,27 @@ export async function analysisCacheKey(input: string, modelId: string): Promise<
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-/** JSON に書き出す、分析の条件です。 */
+/** JSON に書き出す、分析の条件とラベルです。 */
 export interface ClusterJsonMeta {
   /** 埋め込みモデルの id です。 */
   modelId: string
   /** 分析した意見 CSV のパスです。 */
   source: string
+  /** ラベルを生成した LLM の id です。ラベルを生成していなければ省略します。 */
+  labelModelId?: string
+  /** LLM が生成したクラスタのラベルです。生成していなければ省略します。 */
+  labels?: ClusterLabel[]
 }
 
 /** 読み込んだ JSON の内容です。 */
-export interface ClusterJson extends ClusterJsonMeta {
+export interface ClusterJson {
   result: OpinionClusterResult
+  modelId: string
+  source: string
+  /** ラベルを生成した LLM の id です。ラベルが無ければ null です。 */
+  labelModelId: string | null
+  /** LLM が生成したクラスタのラベルです。無ければ空の配列です。 */
+  labels: ClusterLabel[]
 }
 
 /**
@@ -123,7 +134,8 @@ export interface ClusterJson extends ClusterJsonMeta {
  * @returns 整形した JSON の文字列
  */
 export function serializeClusterJson(result: OpinionClusterResult, meta: ClusterJsonMeta): string {
-  return JSON.stringify({ format: JSON_FORMAT, version: JSON_VERSION, ...meta, comments: result.comments, clusters: result.clusters }, null, 2)
+  const { modelId, source, labelModelId, labels } = meta
+  return JSON.stringify({ format: JSON_FORMAT, version: JSON_VERSION, modelId, source, labelModelId, labels, comments: result.comments, clusters: result.clusters }, null, 2)
 }
 
 /** 値がオブジェクト（配列と null を除く）かを判定します。 */
@@ -158,6 +170,23 @@ function parseCluster(value: unknown, position: number, commentIds: Set<string>)
   return { id: position, commentIds: ids }
 }
 
+/** JSON の labels の要素を検証して取り出します。 */
+function parseLabel(value: unknown, position: number, clusterCount: number, commentIds: Set<string>): ClusterLabel {
+  if (!isRecord(value)) throw invalid(`labels[${position}] がオブジェクトではありません。`)
+  const { clusterId, label, description, basisCommentIds } = value
+  if (typeof clusterId !== 'number' || !Number.isInteger(clusterId) || clusterId < 0 || clusterId >= clusterCount) {
+    throw invalid(`labels[${position}] の clusterId（${String(clusterId)}）に対応するクラスタがありません。`)
+  }
+  if (typeof label !== 'string' || typeof description !== 'string' || !Array.isArray(basisCommentIds)) {
+    throw invalid(`labels[${position}] に label・description（文字列）と basisCommentIds（配列）が必要です。`)
+  }
+  const ids = basisCommentIds.map((id, index) => {
+    if (typeof id !== 'string' || !commentIds.has(id)) throw invalid(`labels[${position}].basisCommentIds[${index}] の意見「${String(id)}」が comments にありません。`)
+    return id
+  })
+  return { clusterId, label, description, basisCommentIds: ids }
+}
+
 /**
  * 書き出した JSON を読み込み、分析結果に戻します。
  *
@@ -182,5 +211,9 @@ export function parseClusterJson(text: string): ClusterJson {
   const clusters = data.clusters.map((cluster, position) => parseCluster(cluster, position, commentIds))
   const outOfRange = comments.find((comment) => !Number.isInteger(comment.cluster) || comment.cluster < 0 || comment.cluster >= clusters.length)
   if (outOfRange) throw invalid(`意見「${outOfRange.id}」の cluster（${outOfRange.cluster}）に対応するクラスタがありません。`)
-  return { result: { comments, clusters }, modelId, source }
+  const labelModelId = data.labelModelId ?? null
+  if (labelModelId !== null && typeof labelModelId !== 'string') throw invalid('labelModelId は文字列にしてください。')
+  if (data.labels !== undefined && !Array.isArray(data.labels)) throw invalid('labels は配列にしてください。')
+  const labels = (data.labels ?? []).map((label: unknown, position: number) => parseLabel(label, position, clusters.length, commentIds))
+  return { result: { comments, clusters }, modelId, source, labelModelId, labels }
 }

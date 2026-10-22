@@ -66,7 +66,20 @@ describe('serializeClusterJson と parseClusterJson', () => {
   it('書き出した JSON を読み込むと、同じ結果とモデルの情報に戻る', () => {
     const result = clusterOpinions(comments, embeddings, 2)
     const json = serializeClusterJson(result, { modelId: 'モデル A', source: 'raw/survey/comments.csv' })
-    expect(parseClusterJson(json)).toEqual({ result, modelId: 'モデル A', source: 'raw/survey/comments.csv' })
+    expect(parseClusterJson(json)).toEqual({ result, modelId: 'モデル A', source: 'raw/survey/comments.csv', labelModelId: null, labels: [] })
+  })
+
+  it('LLM が生成したラベルと、その根拠にした意見の id も書き出して読み込める', () => {
+    const result = clusterOpinions(comments, embeddings, 2)
+    const labels = [{ clusterId: 0, label: '給食の改善', description: '給食の費用と内容の改善を求める意見です。', basisCommentIds: ['c1', 'c2'] }]
+    const json = serializeClusterJson(result, { modelId: 'モデル A', source: 'raw/comments.csv', labelModelId: 'LLM B', labels })
+    expect(parseClusterJson(json)).toMatchObject({ labelModelId: 'LLM B', labels })
+  })
+
+  it('存在しないクラスタや意見を指すラベルの JSON はエラーにする', () => {
+    const result = clusterOpinions(comments, embeddings, 2)
+    const labels = [{ clusterId: 5, label: '給食の改善', description: '説明', basisCommentIds: ['c1'] }]
+    expect(() => parseClusterJson(serializeClusterJson(result, { modelId: 'モデル A', source: 'raw/comments.csv', labelModelId: 'LLM B', labels }))).toThrow(/labels\[0\]/)
   })
 
   it('形式の違う JSON はエラーにする', () => {

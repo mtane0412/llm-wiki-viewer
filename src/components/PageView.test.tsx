@@ -89,6 +89,7 @@ describe('PageView の根拠としての被参照', () => {
       { path: 'wiki/concepts/tool-use.md', content: '---\ntitle: ツール使用\nsources: ["[[sources/codex-repo]]"]\n---\n本文' },
       { path: 'wiki/sources/codex-repo.md', content: '---\ntitle: Codex リポジトリ\ntype: source\n---\n要約' },
       { path: 'wiki/sources/未参照のソース.md', content: '---\ntitle: 未参照のソース\ntype: source\n---\n要約' },
+      { path: 'wiki/analyses/比較.md', content: '---\ntitle: 比較\nsources: ["[[concepts/tool-use]]"]\n---\n本文' },
     ],
     unloadedMarkdownPaths: [],
     assetPaths: [],
@@ -122,8 +123,15 @@ describe('PageView の根拠としての被参照', () => {
     expect(within(citations).getByText('このソースを sources に挙げているページはありません。')).toBeInTheDocument()
   })
 
-  it('ソース要約ではなく、根拠としても参照されていないページでは表示しない', () => {
+  it('ソース要約ではないページが sources で参照されている場合は、「このページを根拠にしているページ」として表示する', () => {
     renderSourcePage('wiki/concepts/tool-use.md')
     expect(screen.queryByRole('region', { name: 'このソースを根拠にしているページ' })).toBeNull()
+    const citations = screen.getByRole('region', { name: 'このページを根拠にしているページ' })
+    expect(within(citations).getByRole('link', { name: '比較' })).toBeInTheDocument()
+  })
+
+  it('ソース要約ではなく、根拠としても参照されていないページでは表示しない', () => {
+    renderSourcePage('wiki/analyses/比較.md')
+    expect(screen.queryByRole('region', { name: /を根拠にしているページ/ })).toBeNull()
   })
 })

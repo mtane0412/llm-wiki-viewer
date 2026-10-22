@@ -59,6 +59,7 @@ export type LintIssue =
   | { kind: 'orphan'; page: string }
   | { kind: 'missing-sources'; page: string }
   | { kind: 'frontmatter-error'; page: string; message: string }
+  | { kind: 'not-in-index'; page: string }
 
 /** 未作成のページ（解決できないリンク先）と、そこへリンクしているページです。 */
 export interface RedLink {
@@ -85,6 +86,8 @@ export interface WikiIndex {
   issues: LintIssue[]
   /** 最初に表示するページ（index.md など）のパスです。 */
   homePath: string | null
+  /** Wiki ルート直下の index.md（全ページのカタログ）のパスです。無ければ null です。 */
+  indexPagePath: string | null
   /** wikilink を解決する関数です。 */
   resolve: Resolver
 }
@@ -172,14 +175,17 @@ function toUnloadedPage(path: string, area: WikiPage['area']): WikiPage {
   return { path, area, title, aliases: [], tags: [], type: undefined, updated: undefined, sources: [], frontmatter: {}, body: '', loaded: false }
 }
 
+/** Wiki ルート直下にある、指定した名前（小文字・拡張子なし）のページのパスを返します。無ければ null です。 */
+function findRootPage(pages: WikiPage[], wikiRoot: string, name: string): string | null {
+  const found = pages.find(
+    (page) => page.area === 'wiki' && dirname(page.path) === wikiRoot && stripMarkdownExtension(basename(page.path)).toLowerCase() === name,
+  )
+  return found?.path ?? null
+}
+
 /** ホームページを選びます。Wiki ルート直下の index → overview → 先頭のページの順です。 */
 function pickHomePath(pages: WikiPage[], wikiRoot: string): string | null {
-  const rootPages = pages.filter((page) => page.area === 'wiki' && dirname(page.path) === wikiRoot)
-  for (const name of ['index', 'overview']) {
-    const found = rootPages.find((page) => stripMarkdownExtension(basename(page.path)).toLowerCase() === name)
-    if (found) return found.path
-  }
-  return pages.find((page) => page.area === 'wiki')?.path ?? null
+  return findRootPage(pages, wikiRoot, 'index') ?? findRootPage(pages, wikiRoot, 'overview') ?? pages.find((page) => page.area === 'wiki')?.path ?? null
 }
 
 /** sources が必要なページかを判定します。目次類とソース要約ページ自体は対象外です。 */
@@ -240,8 +246,15 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
   }
   const backlinks = new Map([...backlinkSets].map(([path, set]) => [path, [...set].sort((a, b) => a.localeCompare(b))]))
 
+  // index.md が無い Wiki では、全ページを未掲載と扱わずに判定自体を行いません（画面でその旨を示します）
+  const indexPagePath = findRootPage(pages, wikiRoot, 'index')
+  const listedInIndex = new Set((indexPagePath ? (outgoing.get(indexPagePath) ?? []) : []).map((link) => link.resolvedPath))
+
   for (const page of pages) {
     if (page.area !== 'wiki') continue
+    if (indexPagePath && !isSpecialPage(page.path) && !listedInIndex.has(page.path)) {
+      issues.push({ kind: 'not-in-index', page: page.path })
+    }
     if (!isSpecialPage(page.path)) {
       const hasWikiInbound = (backlinks.get(page.path) ?? []).some((from) => pageByPath.get(from)?.area === 'wiki')
       if (!hasWikiInbound) issues.push({ kind: 'orphan', page: page.path })
@@ -260,6 +273,7 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     backlinks,
     issues,
     homePath: pickHomePath(pages, wikiRoot),
+    indexPagePath,
     resolve,
   }
 }

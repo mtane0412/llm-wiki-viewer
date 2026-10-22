@@ -1,5 +1,5 @@
 /**
- * lint の指摘（壊れたリンク・孤立ページ・sources 未記載・frontmatter エラー）を一覧表示するコンポーネントです。
+ * lint の指摘（壊れたリンク・孤立ページ・sources 未記載・frontmatter エラー・index.md 未掲載）を一覧表示するコンポーネントです。
  * 壊れたリンクは、未作成のリンク先ごとに参照数の多い順に並べた「未作成ページ（赤リンク）」としても表示します。
  *
  * LLM Wiki の Lint 操作で LLM に直させる前に、人が全体の健全性を確認するための画面です。
@@ -21,10 +21,24 @@ const SECTIONS: { kind: LintIssue['kind']; title: string; description: string }[
   { kind: 'orphan', title: '孤立ページ', description: 'どの wiki ページからもリンクされていないページです（index・log・overview を除く）。' },
   { kind: 'missing-sources', title: 'sources 未記載', description: 'frontmatter の sources が空のページです（ソース要約ページと目次類を除く）。' },
   { kind: 'frontmatter-error', title: 'frontmatter エラー', description: 'frontmatter の YAML を解析できないページです。' },
+  { kind: 'not-in-index', title: 'index.md 未掲載', description: 'Wiki ルート直下の index.md からリンクされていないページです（index・log・overview を除く）。' },
 ]
 
 /** 指摘の種類ごとの区画です。 */
-function IssueSection({ title, description, count, children }: { title: string; description: string; count: number; children: ReactNode }) {
+function IssueSection({
+  title,
+  description,
+  count,
+  unavailableReason,
+  children,
+}: {
+  title: string
+  description: string
+  count: number
+  /** 判定の前提が欠けていて判定していない場合の理由です。指定すると「指摘はありません」の代わりに表示します。 */
+  unavailableReason?: string
+  children: ReactNode
+}) {
   const headingId = useId()
   return (
     <section className="lint-section" aria-labelledby={headingId}>
@@ -32,7 +46,7 @@ function IssueSection({ title, description, count, children }: { title: string; 
         {title} <span className="count">{count}</span>
       </h2>
       <p className="muted">{description}</p>
-      {count === 0 ? <p className="lint-ok">指摘はありません。</p> : children}
+      {unavailableReason ? <p className="lint-unavailable">{unavailableReason}</p> : count === 0 ? <p className="lint-ok">指摘はありません。</p> : children}
     </section>
   )
 }
@@ -73,7 +87,17 @@ export function LintView({ index, vaultId }: LintViewProps) {
         const byPage = new Map<string, LintIssue[]>()
         for (const issue of issues) byPage.set(issue.page, [...(byPage.get(issue.page) ?? []), issue])
         return (
-          <IssueSection key={section.kind} title={section.title} description={section.description} count={issues.length}>
+          <IssueSection
+            key={section.kind}
+            title={section.title}
+            description={section.description}
+            count={issues.length}
+            unavailableReason={
+              section.kind === 'not-in-index' && index.indexPagePath === null
+                ? 'Wiki ルート直下に index.md が見つからないため、判定していません。'
+                : undefined
+            }
+          >
             <ul className="lint-list">
               {[...byPage].map(([path, pageIssues]) => (
                 <li key={path}>

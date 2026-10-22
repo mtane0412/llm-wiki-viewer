@@ -737,6 +737,10 @@ details[open] > summary::before {
   font-size: 0.85rem;
 }
 
+.lint-unavailable {
+  color: var(--danger);
+}
+
 .lint-ok {
   color: var(--ok);
 }

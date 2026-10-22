@@ -68,6 +68,16 @@ describe('buildWikiIndex', () => {
     expect(index.issues).toContainEqual(expect.objectContaining({ kind: 'frontmatter-error', page: 'wiki/broken-yaml.md' }))
   })
 
+  it('index.md のパスを索引に記録する', () => {
+    expect(index.indexPagePath).toBe('wiki/index.md')
+  })
+
+  it('index.md からリンクされていないページを指摘する（index・log と raw/ は対象外）', () => {
+    const notInIndex = index.issues.filter((issue) => issue.kind === 'not-in-index').map((issue) => issue.page)
+    // 前提: index.md は tool-use と codex-repo だけにリンクしています
+    expect(notInIndex).toEqual(['wiki/broken-yaml.md', 'wiki/concepts/孤立した概念.md'])
+  })
+
   it('raw/ のページは lint の対象外にする', () => {
     expect(index.issues.some((issue) => issue.page.startsWith('raw/'))).toBe(false)
   })
@@ -83,7 +93,34 @@ describe('buildWikiIndex', () => {
     })
     expect(flat.wikiRoot).toBe('')
     expect(flat.homePath).toBe('INDEX.md')
+    expect(flat.indexPagePath).toBe('INDEX.md')
     expect(flat.backlinks.get('LLM Wiki.md')).toEqual(['INDEX.md'])
+  })
+})
+
+describe('index.md が無い Wiki', () => {
+  const noIndex = buildWikiIndex({
+    markdownFiles: [
+      { path: 'wiki/overview.md', content: '[[concepts/agent]]' },
+      { path: 'wiki/concepts/agent.md', content: 'エージェントの説明' },
+      { path: 'wiki/concepts/memory.md', content: '記憶の説明' },
+    ],
+    unloadedMarkdownPaths: [],
+    assetPaths: [],
+  })
+
+  it('index.md のパスを null にし、全ページを未掲載とは扱わない', () => {
+    expect(noIndex.indexPagePath).toBeNull()
+    expect(noIndex.issues.some((issue) => issue.kind === 'not-in-index')).toBe(false)
+  })
+
+  it('サブフォルダの index.md は Wiki の目次とみなさない', () => {
+    const nested = buildWikiIndex({
+      markdownFiles: [{ path: 'wiki/concepts/index.md', content: '[[agent]]' }, { path: 'wiki/concepts/agent.md', content: '本文' }],
+      unloadedMarkdownPaths: [],
+      assetPaths: [],
+    })
+    expect(nested.indexPagePath).toBeNull()
   })
 })
 

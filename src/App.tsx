@@ -6,6 +6,7 @@
  * - 右: 選んだ画面（ページ・タグと type の一覧・絞り込んだページ一覧・最近の更新・未解決の矛盾と問い・lint の指摘・グラフ・スキーマ・検索結果）
  * 検索結果の画面は URL（`#/{vaultId}/search?q=...`）で開きます。サイドバーの検索欄は、表示中の画面を変えずに結果を一覧します。
  * タブのタイトルには、表示中の画面と Wiki の名前を出します。
+ * サイドバーは本文の左上のボタンで開閉できます。閉じている間も検索語やフォルダの開閉の状態は保ちます。
  * リポジトリ直下に CLAUDE.md（Wiki のスキーマ）がある場合は、サイドバーからスキーマの画面を開けます。
  * Wiki を 1 つも開いていない場合は、スタート画面だけを表示します。
  */
@@ -58,6 +59,7 @@ export default function App({ deps }: AppProps) {
   const [route, navigate] = useHashRoute()
   const [query, setQuery] = useState('')
   const [searchAll, setSearchAll] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const deferredQuery = useDeferredValue(query)
 
   const routeVaultId = vaultIdOf(route)
@@ -137,8 +139,9 @@ export default function App({ deps }: AppProps) {
   const issueCount = index?.issues.length ?? 0
 
   return (
-    <div className="layout">
-      <aside className="sidebar">
+    <div className={sidebarOpen ? 'layout' : 'layout layout-sidebar-closed'}>
+      {/* 閉じている間も検索語やフォルダの開閉の状態を保つため、外さずに hidden で隠します */}
+      <aside id="sidebar" className="sidebar" hidden={!sidebarOpen}>
         <div className="sidebar-header">
           <a className="app-name" href={formatRoute({ view: 'home', vaultId: vault.id })}>
             LLM Wiki Viewer
@@ -223,6 +226,17 @@ export default function App({ deps }: AppProps) {
       </aside>
 
       <main className="content">
+        <button
+          type="button"
+          className="sidebar-toggle"
+          aria-controls="sidebar"
+          aria-expanded={sidebarOpen}
+          aria-label={sidebarOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
+          title={sidebarOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
+          onClick={() => setSidebarOpen((open) => !open)}
+        >
+          {sidebarOpen ? '«' : '»'}
+        </button>
         {errorBanner}
         <MainContent
           vault={vault}

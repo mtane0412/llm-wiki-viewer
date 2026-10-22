@@ -342,4 +342,27 @@ describe('App', () => {
     expect(await within(main).findByRole('link', { name: '出汁（cooking-wiki）' })).toBeInTheDocument()
     expect(within(main).getByRole('link', { name: 'Tool use（agent-wiki）' })).toBeInTheDocument()
   })
+
+  it('サイドバーを閉じるとページ一覧が隠れ、開き直すと入力中の検索語のまま元に戻る', async () => {
+    const { user } = renderApp({ pick: [createFakeFileSystem('agent-wiki', agentWiki).root] })
+    await user.click(await screen.findByRole('button', { name: 'Wiki フォルダを開く' }))
+    await screen.findByRole('heading', { level: 1, name: 'Index' })
+    // 前提: サイドバーの検索欄に検索語を入力しておく
+    await user.type(within(screen.getByRole('complementary')).getByRole('searchbox', { name: '検索' }), 'シェル')
+
+    await user.click(screen.getByRole('button', { name: 'サイドバーを閉じる' }))
+
+    // 検証: サイドバーは隠れ、本文は表示したまま、開くボタンに切り替わる
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Index' })).toBeInTheDocument()
+    const openButton = screen.getByRole('button', { name: 'サイドバーを開く' })
+    expect(openButton).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(openButton)
+
+    // 検証: サイドバーが戻り、入力していた検索語が残っている
+    const sidebar = screen.getByRole('complementary')
+    expect(within(sidebar).getByRole('searchbox', { name: '検索' })).toHaveValue('シェル')
+    expect(screen.getByRole('button', { name: 'サイドバーを閉じる' })).toHaveAttribute('aria-expanded', 'true')
+  })
 })

@@ -80,3 +80,50 @@ describe('PageView の目次', () => {
     expect(screen.queryByRole('navigation', { name: '目次' })).toBeNull()
   })
 })
+
+describe('PageView の根拠としての被参照', () => {
+  /** ソース要約ページ「Codex リポジトリ」を、tool-use が sources で根拠にし、index が本文でリンクしている Wiki です。 */
+  const sourceWiki = buildWikiIndex({
+    markdownFiles: [
+      { path: 'wiki/index.md', content: '---\ntitle: Index\n---\n- [[sources/codex-repo]]' },
+      { path: 'wiki/concepts/tool-use.md', content: '---\ntitle: ツール使用\nsources: ["[[sources/codex-repo]]"]\n---\n本文' },
+      { path: 'wiki/sources/codex-repo.md', content: '---\ntitle: Codex リポジトリ\ntype: source\n---\n要約' },
+      { path: 'wiki/sources/未参照のソース.md', content: '---\ntitle: 未参照のソース\ntype: source\n---\n要約' },
+    ],
+    unloadedMarkdownPaths: [],
+    assetPaths: [],
+  })
+
+  /** 指定したページを表示するヘルパーです。 */
+  function renderSourcePage(path: string) {
+    const page = sourceWiki.pageByPath.get(path)
+    if (!page) throw new Error(`テストデータにページがありません: ${path}`)
+    render(<PageView page={page} index={sourceWiki} vaultId="v1" heading={undefined} readBlob={vi.fn()} />)
+  }
+
+  beforeEach(() => {
+    window.scrollTo = vi.fn()
+  })
+
+  it('ソース要約ページでは、sources で根拠にしているページを本文のバックリンクと分けて表示する', () => {
+    renderSourcePage('wiki/sources/codex-repo.md')
+    const citations = screen.getByRole('region', { name: 'このソースを根拠にしているページ' })
+    expect(within(citations).getByRole('link', { name: 'ツール使用' })).toHaveAttribute('href', '#/v1/page/wiki/concepts/tool-use.md')
+    expect(within(citations).queryByRole('link', { name: 'Index' })).toBeNull()
+
+    const backlinks = screen.getByRole('region', { name: 'バックリンク' })
+    expect(within(backlinks).getByRole('link', { name: 'Index' })).toBeInTheDocument()
+    expect(within(backlinks).queryByRole('link', { name: 'ツール使用' })).toBeNull()
+  })
+
+  it('根拠にしているページが無いソース要約ページでは、その旨を表示する', () => {
+    renderSourcePage('wiki/sources/未参照のソース.md')
+    const citations = screen.getByRole('region', { name: 'このソースを根拠にしているページ' })
+    expect(within(citations).getByText('このソースを sources に挙げているページはありません。')).toBeInTheDocument()
+  })
+
+  it('ソース要約ではなく、根拠としても参照されていないページでは表示しない', () => {
+    renderSourcePage('wiki/concepts/tool-use.md')
+    expect(screen.queryByRole('region', { name: 'このソースを根拠にしているページ' })).toBeNull()
+  })
+})

@@ -2,6 +2,8 @@
  * Wiki の 1 ページを表示するコンポーネントです。
  *
  * frontmatter のメタ情報（type・tags・updated・sources）、本文、バックリンク、見出しの目次を表示します。
+ * ソース要約ページと、frontmatter の sources で根拠に挙げられているページでは、
+ * 「このソースを根拠にしているページ」を本文のバックリンクと分けて表示します。
  * Wiki ルート直下の log.md（作業ログ）は、本文の代わりにタイムラインとして表示します（目次は表示しません）。
  * `[[page#見出し]]` で開いた場合は、その見出しまでスクロールします。
  */
@@ -11,7 +13,7 @@ import { basename } from '../lib/path'
 import { createWikilinkOptions } from '../lib/remarkWikilink'
 import { formatRoute } from '../lib/route'
 import { extractHeadings } from '../lib/toc'
-import type { WikiIndex, WikiPage } from '../lib/wikiIndex'
+import { isSourcePage, type WikiIndex, type WikiPage } from '../lib/wikiIndex'
 import { LogTimeline } from './LogTimeline'
 import { MarkdownView } from './MarkdownView'
 import { TableOfContents } from './TableOfContents'
@@ -43,6 +45,8 @@ function PageLink({ index, vaultId, path }: { index: WikiIndex; vaultId: string;
 /** Wiki の 1 ページです。 */
 export function PageView({ page, index, vaultId, heading, readBlob }: PageViewProps) {
   const backlinks = index.backlinks.get(page.path) ?? []
+  const citations = index.citations.get(page.path) ?? []
+  const showCitations = citations.length > 0 || isSourcePage(page, index.wikiRoot)
   const isLog = page.area === 'wiki' && isLogPage(page.path, index.wikiRoot)
   // 文字列が空の見出し（画像だけの見出しなど）は目次から移動できないため除きます
   const headings = useMemo(
@@ -126,6 +130,25 @@ export function PageView({ page, index, vaultId, heading, readBlob }: PageViewPr
           <LogTimeline markdown={page.body} index={index} pagePath={page.path} vaultId={vaultId} readBlob={readBlob} />
         ) : (
           <MarkdownView markdown={page.body} index={index} pagePath={page.path} vaultId={vaultId} readBlob={readBlob} />
+        )}
+
+        {showCitations && (
+          <section className="backlinks" aria-label="このソースを根拠にしているページ">
+            <h2>
+              このソースを根拠にしているページ <span className="count">{citations.length}</span>
+            </h2>
+            {citations.length === 0 ? (
+              <p className="muted">このソースを sources に挙げているページはありません。</p>
+            ) : (
+              <ul>
+                {citations.map((path) => (
+                  <li key={path}>
+                    <PageLink index={index} vaultId={vaultId} path={path} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         )}
 
         <section className="backlinks" aria-label="バックリンク">

@@ -60,6 +60,21 @@ describe('route', () => {
     expect(parseRoute(formatRoute(withHeading))).toEqual(withHeading)
   })
 
+  it('検索結果の URL を相互に変換する（日本語・空白・& を含む検索語）', () => {
+    const route = { view: 'search', vaultId: 'v1', query: 'シェル & 編集 ツール', all: false } as const
+    expect(parseRoute(formatRoute(route))).toEqual(route)
+  })
+
+  it('すべての Wiki を対象にした検索結果の URL を相互に変換する', () => {
+    const route = { view: 'search', vaultId: 'v1', query: '出汁', all: true } as const
+    expect(formatRoute(route)).toBe('#/v1/search?q=%E5%87%BA%E6%B1%81&all=1')
+    expect(parseRoute(formatRoute(route))).toEqual(route)
+  })
+
+  it('検索語の無い検索結果の URL は、空の検索語として扱う', () => {
+    expect(parseRoute('#/v1/search')).toEqual({ view: 'search', vaultId: 'v1', query: '', all: false })
+  })
+
   it('Wiki だけを指定した URL はその Wiki のホームとして扱う', () => {
     expect(parseRoute('#/v1')).toEqual({ view: 'home', vaultId: 'v1' })
   })

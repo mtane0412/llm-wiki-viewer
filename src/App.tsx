@@ -3,7 +3,9 @@
  *
  * 画面構成:
  * - 左: Wiki の切り替え、検索、表示の切り替え（ページ / タグ / 最近 / 未解決 / Lint / グラフ）、ページ一覧
- * - 右: 選んだ画面（ページ・タグと type の一覧・絞り込んだページ一覧・最近の更新・未解決の矛盾と問い・lint の指摘・グラフ・スキーマ）
+ * - 右: 選んだ画面（ページ・タグと type の一覧・絞り込んだページ一覧・最近の更新・未解決の矛盾と問い・lint の指摘・グラフ・スキーマ・検索結果）
+ * 検索結果の画面は URL（`#/{vaultId}/search?q=...`）で開きます。サイドバーの検索欄は、表示中の画面を変えずに結果を一覧します。
+ * タブのタイトルには、表示中の画面と Wiki の名前を出します。
  * リポジトリ直下に CLAUDE.md（Wiki のスキーマ）がある場合は、サイドバーからスキーマの画面を開けます。
  * Wiki を 1 つも開いていない場合は、スタート画面だけを表示します。
  */
@@ -22,6 +24,7 @@ import { SchemaView } from './components/SchemaView'
 import { SearchResults, type VaultSearchResult } from './components/SearchResults'
 import { StartView } from './components/StartView'
 import { PagesByTagView, PagesByTypeView, TaxonomyView } from './components/TaxonomyView'
+import { documentTitle } from './lib/documentTitle'
 import { formatRoute, type Route } from './lib/route'
 import { searchPages } from './lib/search'
 import type { WikiIndex } from './lib/wikiIndex'
@@ -38,6 +41,14 @@ export interface AppProps {
 /** 画面の状態から Wiki の id を取り出します。 */
 function vaultIdOf(route: Route): string | null {
   return route.view === 'start' ? null : route.vaultId
+}
+
+/** 複数の Wiki のページを検索し、Wiki の名前つきの結果を返します。検索語が空白だけなら空の配列です。 */
+function searchVaults(vaults: Vault[], query: string): VaultSearchResult[] {
+  if (!query.trim()) return []
+  return vaults.flatMap((item) =>
+    item.index ? searchPages(item.index.pages, query).map((result) => ({ ...result, vaultId: item.id, vaultName: item.name })) : [],
+  )
 }
 
 /** LLM Wiki Viewer の画面全体です。 */
@@ -73,13 +84,16 @@ export default function App({ deps }: AppProps) {
     if (firstReady) navigate(formatRoute({ view: 'home', vaultId: firstReady.id }), { replace: true })
   }, [route, api.vaults, navigate])
 
-  const results = useMemo<VaultSearchResult[]>(() => {
-    if (!deferredQuery.trim()) return []
-    const targets = searchAll ? api.vaults : vault ? [vault] : []
-    return targets.flatMap((item) =>
-      item.index ? searchPages(item.index.pages, deferredQuery).map((result) => ({ ...result, vaultId: item.id, vaultName: item.name })) : [],
-    )
-  }, [deferredQuery, searchAll, api.vaults, vault])
+  useEffect(() => {
+    document.title = documentTitle(route, vault)
+  }, [route, vault])
+
+  const results = useMemo(() => searchVaults(searchAll ? api.vaults : vault ? [vault] : [], deferredQuery), [deferredQuery, searchAll, api.vaults, vault])
+  // 検索結果の画面（URL で指定）の結果です。サイドバーの検索欄とは独立しています
+  const routeResults = useMemo(() => {
+    if (route.view !== 'search') return []
+    return searchVaults(route.all ? api.vaults : vault ? [vault] : [], route.query)
+  }, [route, api.vaults, vault])
 
   const openDirectory = async () => {
     const id = await api.openDirectory()
@@ -206,8 +220,30 @@ export default function App({ deps }: AppProps) {
 
       <main className="content">
         {errorBanner}
-        <MainContent vault={vault} route={route} navigate={navigate} seenPages={seenPages} onReconnect={() => void api.reconnect(vault.id)} />
+        {route.view === 'search' ? (
+          <SearchView query={route.query} results={routeResults} showVaultName={route.all} />
+        ) : (
+          <MainContent vault={vault} route={route} navigate={navigate} seenPages={seenPages} onReconnect={() => void api.reconnect(vault.id)} />
+        )}
       </main>
+    </div>
+  )
+}
+
+/** SearchView の引数です。 */
+interface SearchViewProps {
+  query: string
+  results: VaultSearchResult[]
+  /** Wiki の名前を表示するかどうか（すべての Wiki が対象のとき true）です。 */
+  showVaultName: boolean
+}
+
+/** URL で指定した検索語の検索結果を、メインの領域に表示します。 */
+function SearchView({ query, results, showVaultName }: SearchViewProps) {
+  return (
+    <div className="search-view">
+      <h1>{query.trim() ? `「${query}」の検索結果` : '検索結果'}</h1>
+      <SearchResults results={results} showVaultName={showVaultName} />
     </div>
   )
 }

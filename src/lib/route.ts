@@ -12,6 +12,7 @@
  * - `#/{vaultId}/schema?h={見出し}` リポジトリ直下の CLAUDE.md（Wiki のスキーマ）
  * - `#/{vaultId}/tag/{タグ}` タグを持つページの一覧（タグの中の `/` もエンコードします）
  * - `#/{vaultId}/type/{type}` type が一致するページの一覧
+ * - `#/{vaultId}/search?q={検索語}&all=1` 検索結果（`all=1` はすべての Wiki が対象）
  * - `#/{vaultId}` Wiki のホーム
  */
 
@@ -28,6 +29,7 @@ export type Route =
   | { view: 'schema'; vaultId: string; heading: string | undefined }
   | { view: 'tag'; vaultId: string; tag: string }
   | { view: 'type'; vaultId: string; type: string }
+  | { view: 'search'; vaultId: string; query: string; all: boolean }
 
 /** パスの各区切りを URL エンコードします（`/` は区切りとして残します）。 */
 function encodePath(path: string): string {
@@ -65,6 +67,11 @@ export function formatRoute(route: Route): string {
       return `#/${encodeURIComponent(route.vaultId)}/tag/${encodeURIComponent(route.tag)}`
     case 'type':
       return `#/${encodeURIComponent(route.vaultId)}/type/${encodeURIComponent(route.type)}`
+    case 'search': {
+      const params = new URLSearchParams({ q: route.query })
+      if (route.all) params.set('all', '1')
+      return `#/${encodeURIComponent(route.vaultId)}/search?${params.toString()}`
+    }
   }
 }
 
@@ -86,6 +93,10 @@ export function parseRoute(hash: string): Route {
     if (view === 'schema') return { view, vaultId, heading: new URLSearchParams(queryPart).get('h') ?? undefined }
     if (view === 'tag' && segments.length === 3) return { view, vaultId, tag: decodeURIComponent(segments[2]) }
     if (view === 'type' && segments.length === 3) return { view, vaultId, type: decodeURIComponent(segments[2]) }
+    if (view === 'search') {
+      const params = new URLSearchParams(queryPart)
+      return { view, vaultId, query: params.get('q') ?? '', all: params.get('all') === '1' }
+    }
     if (view === 'page' && segments.length > 2) {
       const heading = new URLSearchParams(queryPart).get('h') ?? undefined
       return { view: 'page', vaultId, path: segments.slice(2).map(decodeURIComponent).join('/'), heading }

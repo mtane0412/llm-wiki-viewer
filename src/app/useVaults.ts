@@ -166,6 +166,9 @@ export function useVaults(deps: AppDeps): VaultsApi {
             if (await loader.hasChanges()) {
               const { index } = await loader.load()
               patch(vault.id, { index, error: null })
+            } else if (vaultsRef.current.find((item) => item.id === vault.id)?.error) {
+              // 変更が無くても確認に成功したので、前回の一時的な失敗の警告を消します
+              patch(vault.id, { error: null })
             }
           } catch (cause) {
             // LLM の書き込み途中などの一時的な失敗では監視を止めず、ready のまま次の周期で再試行します

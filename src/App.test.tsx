@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
@@ -33,7 +33,7 @@ const agentWiki: FakeTree = {
     },
     sources: { 'codex.md': '---\ntitle: Codex リポジトリ\ntype: source\n---\n要約。原文は [[raw/notes/codex-memo|Codex の生メモ]]。' },
   },
-  raw: { notes: { 'codex-memo.md': '# Codex の生メモ\n\n原文の本文。' } },
+  raw: { notes: { 'codex-memo.md': '---\ntype: memo\ntags: [生メモ]\n---\n# Codex の生メモ\n\n原文の本文。' } },
 }
 
 /** 料理を調べる Wiki のテストデータです。 */
@@ -104,6 +104,8 @@ describe('App', () => {
     await user.click(await within(main).findByRole('link', { name: 'Codex の生メモ' }))
     expect(await within(main).findByText('原文の本文。')).toBeInTheDocument()
     expect(within(main).getByText('元資料')).toBeInTheDocument()
+    expect(within(main).getByText('memo')).toBeInTheDocument()
+    expect(within(main).getByText('#生メモ')).toBeInTheDocument()
   })
 
   it('lint 画面に壊れたリンクと孤立ページを表示する', async () => {
@@ -192,6 +194,19 @@ describe('App', () => {
       fs.failNextRead('wiki/index.md')
     })
     expect(await screen.findByRole('heading', { level: 1, name: '失敗後に反映される目次' }, { timeout: 2000 })).toBeInTheDocument()
+  })
+
+  it('変更の確認が一時的に失敗したときの警告は、次の周期で成功すると消える', async () => {
+    const fs = createFakeFileSystem('agent-wiki', agentWiki)
+    const { user } = renderApp({ pick: [fs.root], pollIntervalMs: 50 })
+    await user.click(await screen.findByRole('button', { name: 'Wiki フォルダを開く' }))
+    await screen.findByRole('heading', { level: 1, name: 'Index' })
+
+    await act(async () => {
+      fs.failNextRead('wiki/index.md')
+    })
+    expect(await screen.findByText(/再読み込みに失敗しました/, {}, { timeout: 2000 })).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText(/再読み込みに失敗しました/)).toBeNull(), { timeout: 2000 })
   })
 
   it('File System Access API が無いブラウザでは、フォルダ選択の入力欄から読み込む', async () => {

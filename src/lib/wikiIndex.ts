@@ -130,8 +130,14 @@ function areaOf(path: string, wikiRoot: string): WikiPage['area'] | null {
   return null
 }
 
-/** Markdown ファイルを解析してページにします。 */
-function toPage(file: MarkdownFile, area: WikiPage['area']): { page: WikiPage; frontmatterError: string | undefined } {
+/**
+ * Markdown ファイルを解析してページにします。
+ *
+ * @param file - Markdown ファイル
+ * @param area - ページの領域
+ * @returns ページと、frontmatter の解析エラー
+ */
+export function toPage(file: MarkdownFile, area: WikiPage['area']): { page: WikiPage; frontmatterError: string | undefined } {
   const { data, body, error } = parseFrontmatter(file.content)
   const sourceList = toStringList(data.sources)
   return {

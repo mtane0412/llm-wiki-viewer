@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ForceGraph2D, { type ForceGraphMethods } from 'react-force-graph-2d'
 import { buildGraphData, type GraphNode } from '../lib/graph'
+import { escapeHtml } from '../lib/html'
 import { formatRoute } from '../lib/route'
 import type { WikiIndex } from '../lib/wikiIndex'
 
@@ -34,6 +35,18 @@ function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
+/** OS のダークモード設定を追跡するフックです。テーマが変わったら色を読み直すために使います。 */
+function usePrefersDark(): boolean {
+  const [dark, setDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = () => setDark(media.matches)
+    media.addEventListener('change', onChange)
+    return () => media.removeEventListener('change', onChange)
+  }, [])
+  return dark
+}
+
 /** 要素の大きさを追跡するフックです。 */
 function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T>(null)
@@ -58,10 +71,19 @@ export default function GraphView({ index, vaultId, onNavigate }: GraphViewProps
     for (const node of data.nodes) counts.set(node.group, (counts.get(node.group) ?? 0) + 1)
     return [...counts].sort((a, b) => b[1] - a[1]).map(([group, count], position) => ({ group, count, colorVar: `--graph-${(position % PALETTE_SIZE) + 1}` }))
   }, [data])
-  const colorOf = useMemo(() => {
-    const map = new Map(groups.map((item) => [item.group, cssVar(item.colorVar)]))
-    return (group: string) => map.get(group) ?? cssVar('--muted')
-  }, [groups])
+  // 描画のたびに getComputedStyle を呼ばないよう、色をまとめて読み、テーマが変わったときだけ読み直します
+  const prefersDark = usePrefersDark()
+  const colors = useMemo(
+    () => ({
+      groups: new Map(groups.map((item) => [item.group, cssVar(item.colorVar)])),
+      muted: cssVar('--muted'),
+      link: cssVar('--graph-link'),
+      text: cssVar('--text'),
+      /** どちらのテーマで読んだ色かを表します。テーマが変わると読み直されます。 */
+      dark: prefersDark,
+    }),
+    [groups, prefersDark],
+  )
   const [containerRef, size] = useElementSize<HTMLDivElement>()
   const graphRef = useRef<ForceGraphMethods<GraphNode> | undefined>(undefined)
   // リンクの多い上位のノードだけ、縮小表示でもラベルを出します
@@ -106,10 +128,10 @@ export default function GraphView({ index, vaultId, onNavigate }: GraphViewProps
           width={size.width}
           height={size.height}
           nodeId="id"
-          nodeLabel="label"
+          nodeLabel={(node) => escapeHtml(node.label)}
           nodeVal={(node) => 1 + Math.sqrt(node.degree)}
-          nodeColor={(node) => colorOf(node.group)}
-          linkColor={() => cssVar('--graph-link')}
+          nodeColor={(node) => colors.groups.get(node.group) ?? colors.muted}
+          linkColor={() => colors.link}
           nodeCanvasObjectMode={() => 'after'}
           nodeCanvasObject={(node, context, globalScale) => {
             if (globalScale < LABEL_ZOOM_THRESHOLD && !labeled.has(node.id)) return
@@ -117,7 +139,7 @@ export default function GraphView({ index, vaultId, onNavigate }: GraphViewProps
             context.font = `${fontSize}px sans-serif`
             context.textAlign = 'center'
             context.textBaseline = 'top'
-            context.fillStyle = cssVar('--text')
+            context.fillStyle = colors.text
             context.fillText(node.label, node.x ?? 0, (node.y ?? 0) + Math.sqrt(1 + Math.sqrt(node.degree)) * NODE_REL_SIZE + 2)
           }}
           onNodeClick={(node) => onNavigate(formatRoute({ view: 'page', vaultId, path: node.id, heading: undefined }))}

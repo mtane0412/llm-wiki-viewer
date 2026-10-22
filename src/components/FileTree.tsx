@@ -2,8 +2,9 @@
  * Wiki のページをフォルダ構造で一覧表示するコンポーネントです。
  *
  * LLM が書く wiki 領域と、元資料の raw 領域を分けて表示します。
+ * raw/ には数千件の元資料があり得るため、閉じているフォルダの中身は描画しません。
  */
-import { useMemo } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { formatRoute } from '../lib/route'
 import type { WikiIndex, WikiPage } from '../lib/wikiIndex'
 
@@ -51,25 +52,41 @@ export interface FileTreeProps {
   currentPath: string | null
 }
 
+/**
+ * 開閉できるフォルダです。開いている間だけ中身を描画します。
+ * 表示中のページを含む場合は、最初から開き、別のページへ移動して含むようになったときも開きます。
+ */
+function Collapsible({ label, count, initiallyOpen, className, children }: { label: string; count: number; initiallyOpen: boolean; className?: string; children: () => ReactNode }) {
+  const [open, setOpen] = useState(initiallyOpen)
+  // 表示中のページがこのフォルダに入ったときに開きます（effect ではなく描画中に前回の値と比べます）
+  const [previousInitiallyOpen, setPreviousInitiallyOpen] = useState(initiallyOpen)
+  if (initiallyOpen !== previousInitiallyOpen) {
+    setPreviousInitiallyOpen(initiallyOpen)
+    if (initiallyOpen) setOpen(true)
+  }
+  return (
+    <details className={className} open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>
+        <span className="tree-folder">{label}</span>
+        <span className="tree-count">{count}</span>
+      </summary>
+      {open && children()}
+    </details>
+  )
+}
+
 /** フォルダとその中のページを描画します。 */
-function FolderNode({ folder, vaultId, currentPath, defaultOpen }: { folder: TreeFolder; vaultId: string; currentPath: string | null; defaultOpen: boolean }) {
+function FolderNode({ folder, vaultId, currentPath }: { folder: TreeFolder; vaultId: string; currentPath: string | null }) {
   const folders = [...folder.folders.values()].sort((a, b) => a.name.localeCompare(b.name))
   return (
     <ul className="tree">
-      {folders.map((child) => {
-        const containsCurrent = currentPath?.startsWith(`${child.path}/`) ?? false
-        return (
-          <li key={child.name}>
-            <details open={defaultOpen || containsCurrent}>
-              <summary>
-                <span className="tree-folder">{child.name}</span>
-                <span className="tree-count">{countPages(child)}</span>
-              </summary>
-              <FolderNode folder={child} vaultId={vaultId} currentPath={currentPath} defaultOpen={false} />
-            </details>
-          </li>
-        )
-      })}
+      {folders.map((child) => (
+        <li key={child.name}>
+          <Collapsible label={child.name} count={countPages(child)} initiallyOpen={currentPath?.startsWith(`${child.path}/`) ?? false}>
+            {() => <FolderNode folder={child} vaultId={vaultId} currentPath={currentPath} />}
+          </Collapsible>
+        </li>
+      ))}
       {folder.pages.map((page) => (
         <li key={page.path}>
           <a
@@ -94,15 +111,11 @@ export function FileTree({ index, vaultId, currentPath }: FileTreeProps) {
 
   return (
     <nav className="file-tree" aria-label="ページ一覧">
-      <FolderNode folder={wikiTree} vaultId={vaultId} currentPath={currentPath} defaultOpen={false} />
+      <FolderNode folder={wikiTree} vaultId={vaultId} currentPath={currentPath} />
       {rawCount > 0 && (
-        <details className="tree-raw">
-          <summary>
-            <span className="tree-folder">raw（元資料）</span>
-            <span className="tree-count">{rawCount}</span>
-          </summary>
-          <FolderNode folder={rawTree} vaultId={vaultId} currentPath={currentPath} defaultOpen={false} />
-        </details>
+        <Collapsible className="tree-raw" label="raw（元資料）" count={rawCount} initiallyOpen={currentPath?.startsWith('raw/') ?? false}>
+          {() => <FolderNode folder={rawTree} vaultId={vaultId} currentPath={currentPath} />}
+        </Collapsible>
       )}
     </nav>
   )

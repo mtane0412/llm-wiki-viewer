@@ -127,7 +127,14 @@ export function MarkdownView({ markdown, index, pagePath, vaultId, readBlob }: M
       },
       img({ src = '', alt = '', className }) {
         if (typeof src !== 'string') return null
-        if (EXTERNAL_URL.test(src)) return <img src={src} alt={alt} />
+        // 外部の画像は閲覧の事実や IP アドレスを外部へ送るため読み込まず、リンクとして表示します
+        if (EXTERNAL_URL.test(src)) {
+          return (
+            <a href={src} target="_blank" rel="noopener noreferrer" title="外部の画像（読み込んでいません）">
+              {alt || src}
+            </a>
+          )
+        }
         const decoded = safeDecode(src)
         const path = className?.includes(EMBED_CLASS) ? decoded : joinPath(dirname(pagePath), decoded)
         if (path === null) return <span className="wikilink-broken">{`画像のパスが不正です: ${decoded}`}</span>

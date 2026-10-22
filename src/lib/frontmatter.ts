@@ -18,8 +18,11 @@ export interface FrontmatterResult {
   error?: string
 }
 
-/** 先頭の `---` から次の `---` までを frontmatter とみなす正規表現です。 */
-const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/
+/**
+ * 先頭の `---` から次の `---` までを frontmatter とみなす正規表現です。
+ * 先頭の BOM と、中身が空のブロック（`---` の直後に `---`）も扱います。
+ */
+const FRONTMATTER_PATTERN = /^\uFEFF?---\r?\n(?:([\s\S]*?)\r?\n)??---[ \t]*(?:\r?\n|$)/
 
 /**
  * Markdown 文字列から frontmatter と本文を分離します。
@@ -34,7 +37,7 @@ export function parseFrontmatter(text: string): FrontmatterResult {
   }
   const body = text.slice(match[0].length)
   try {
-    const parsed: unknown = parse(match[1])
+    const parsed: unknown = parse(match[1] ?? '')
     if (parsed === null || parsed === undefined) {
       return { data: {}, body, hasFrontmatter: true }
     }

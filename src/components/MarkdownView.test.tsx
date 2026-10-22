@@ -74,6 +74,12 @@ describe('MarkdownView', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer')
   })
 
+  it('外部 URL の画像は読み込まず、リンクとして表示する', () => {
+    renderMarkdown('![追跡用の画像](https://tracker.example.com/pixel.png)')
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(screen.getByRole('link', { name: '追跡用の画像' })).toHaveAttribute('href', 'https://tracker.example.com/pixel.png')
+  })
+
   it('見出しに見出しの文字列を id として付ける', () => {
     renderMarkdown('## 承認の仕組み')
     expect(screen.getByRole('heading', { name: '承認の仕組み' })).toHaveAttribute('id', '承認の仕組み')

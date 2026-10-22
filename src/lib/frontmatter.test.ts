@@ -35,3 +35,16 @@ describe('parseFrontmatter', () => {
     expect(result.error).toMatch(/オブジェクト/)
   })
 })
+
+describe('parseFrontmatter の境界値', () => {
+  it('空の frontmatter（--- の直後に ---）を空のデータとして扱い、本文の水平線を巻き込まない', () => {
+    const result = parseFrontmatter('---\n---\n本文\n\n---\n\n後半\n')
+    expect(result).toEqual({ data: {}, body: '本文\n\n---\n\n後半\n', hasFrontmatter: true })
+  })
+
+  it('先頭に BOM があっても frontmatter を認識する', () => {
+    const result = parseFrontmatter('﻿---\ntitle: BOM つき\n---\n本文\n')
+    expect(result.data).toEqual({ title: 'BOM つき' })
+    expect(result.body).toBe('本文\n')
+  })
+})

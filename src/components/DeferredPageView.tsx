@@ -4,8 +4,7 @@
  * 読み込んだ内容は表示にだけ使い、索引（リンク・lint・検索）には反映しません。
  */
 import { useEffect, useState } from 'react'
-import { parseFrontmatter } from '../lib/frontmatter'
-import type { WikiIndex, WikiPage } from '../lib/wikiIndex'
+import { toPage, type WikiIndex, type WikiPage } from '../lib/wikiIndex'
 import { PageView } from './PageView'
 
 /** DeferredPageView の引数です。 */
@@ -30,9 +29,8 @@ export function DeferredPageView({ page, index, vaultId, heading, readText, read
     readText(page.path).then(
       (text) => {
         if (cancelled) return
-        const { data, body } = parseFrontmatter(text)
-        const title = typeof data.title === 'string' ? data.title : page.title
-        setState({ path: page.path, page: { ...page, title, frontmatter: data, body, loaded: true } })
+        // 索引のページと同じ変換で、frontmatter のメタ情報（type・tags・sources など）を反映します
+        setState({ path: page.path, page: toPage({ path: page.path, content: text }, page.area).page })
       },
       (cause: unknown) => {
         if (!cancelled) setState({ path: page.path, error: cause instanceof Error ? cause.message : String(cause) })

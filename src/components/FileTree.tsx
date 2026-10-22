@@ -3,14 +3,15 @@
  *
  * LLM が書く wiki 領域と、元資料の raw 領域を分けて表示します。
  * raw/ には数千件の元資料があり得るため、閉じているフォルダの中身は描画しません。
- * raw/ の CSV・JSON ファイルは、開いたときに表・投票の集計・意見クラスタとして表示できるため、Markdown のページと並べて載せます。
+ * raw/ と wiki/ の CSV・JSON ファイルは、開いたときに表・投票の集計・意見クラスタとして表示できるため、Markdown のページと並べて載せます。
+ * wiki/ には、LLM が証言などから推定して作った投票 CSV を置くことがあります。
  */
 import { useMemo, useState, type ReactNode } from 'react'
 import { basename, isCsvPath, isJsonPath } from '../lib/path'
 import { formatRoute } from '../lib/route'
 import type { WikiIndex, WikiPage } from '../lib/wikiIndex'
 
-/** 一覧に載せる項目（ページ、または raw/ の CSV ファイル）です。 */
+/** 一覧に載せる項目（ページ、または CSV・JSON ファイル）です。 */
 type TreeEntry = Pick<WikiPage, 'path' | 'title'>
 
 /** フォルダの木構造です。 */
@@ -47,6 +48,12 @@ function countPages(folder: TreeFolder): number {
   let count = folder.pages.length
   for (const child of folder.folders.values()) count += countPages(child)
   return count
+}
+
+/** 開く画面のある CSV・JSON ファイルを、一覧に載せる項目にします。 */
+function dataFileEntries(index: WikiIndex, area: WikiPage['area']): TreeEntry[] {
+  const inArea = (path: string) => (area === 'raw' ? path.startsWith('raw/') : !path.startsWith('raw/') && (!index.wikiRoot || path.startsWith(`${index.wikiRoot}/`)))
+  return index.assetPaths.filter((path) => inArea(path) && (isCsvPath(path) || isJsonPath(path))).map((path) => ({ path, title: basename(path) }))
 }
 
 /** FileTree の引数です。 */
@@ -116,13 +123,8 @@ function FolderNode({ folder, vaultId, currentPath }: { folder: TreeFolder; vaul
 
 /** Wiki のページの一覧です。 */
 export function FileTree({ index, vaultId, currentPath }: FileTreeProps) {
-  const wikiTree = useMemo(() => buildTree(index.pages.filter((page) => page.area === 'wiki'), index.wikiRoot), [index])
-  const rawTree = useMemo(() => {
-    const dataFiles = index.assetPaths
-      .filter((path) => path.startsWith('raw/') && (isCsvPath(path) || isJsonPath(path)))
-      .map((path) => ({ path, title: basename(path) }))
-    return buildTree([...index.pages.filter((page) => page.area === 'raw'), ...dataFiles], 'raw')
-  }, [index])
+  const wikiTree = useMemo(() => buildTree([...index.pages.filter((page) => page.area === 'wiki'), ...dataFileEntries(index, 'wiki')], index.wikiRoot), [index])
+  const rawTree = useMemo(() => buildTree([...index.pages.filter((page) => page.area === 'raw'), ...dataFileEntries(index, 'raw')], 'raw'), [index])
   const rawCount = countPages(rawTree)
 
   return (

@@ -54,7 +54,7 @@ describe('FileTree', () => {
   })
 })
 
-describe('FileTree の raw/ の CSV', () => {
+describe('FileTree の CSV・JSON ファイル', () => {
   it('raw/ の CSV・JSON ファイルを、開けるファイルとして一覧に載せる', async () => {
     const withCsv = buildWikiIndex({
       markdownFiles: [{ path: 'wiki/index.md', content: '# 目次' }],
@@ -69,6 +69,21 @@ describe('FileTree の raw/ の CSV', () => {
     // 意見クラスタの書き出した結果（JSON）も開けるファイルとして載せます
     expect(screen.getByRole('link', { name: 'clusters.json' })).toHaveAttribute('href', '#/v1/page/raw/survey/clusters.json')
     // 前提: 開く画面の無い画像などは一覧に載せません
+    expect(screen.queryByRole('link', { name: 'photo.png' })).toBeNull()
+  })
+
+  it('wiki/ の CSV・JSON ファイルも、wiki のページと並べて一覧に載せる', async () => {
+    const withCsv = buildWikiIndex({
+      markdownFiles: [{ path: 'wiki/index.md', content: '# 目次' }],
+      unloadedMarkdownPaths: [],
+      assetPaths: ['wiki/analyses/推定/votes.csv', 'wiki/analyses/推定/clusters.json', 'wiki/analyses/推定/photo.png'],
+    })
+    const user = userEvent.setup()
+    render(<FileTree index={withCsv} vaultId="v1" currentPath="wiki/index.md" />)
+    await user.click(screen.getByText('analyses'))
+    await user.click(await screen.findByText('推定'))
+    expect(await screen.findByRole('link', { name: 'votes.csv' })).toHaveAttribute('href', `#/v1/page/wiki/analyses/${encodeURIComponent('推定')}/votes.csv`)
+    expect(screen.getByRole('link', { name: 'clusters.json' })).toHaveAttribute('href', `#/v1/page/wiki/analyses/${encodeURIComponent('推定')}/clusters.json`)
     expect(screen.queryByRole('link', { name: 'photo.png' })).toBeNull()
   })
 })

@@ -78,6 +78,8 @@ function LinkListSection({ label, paths, emptyText, index, vaultId }: LinkListSe
 /** Wiki の 1 ページです。 */
 export function PageView({ page, index, vaultId, heading, readBlob }: PageViewProps) {
   const backlinks = index.backlinks.get(page.path) ?? []
+  // raw/ の元資料は開いたときに読み込むため、索引のタグ・type の一覧に含まれません。一覧へのリンクにはしません
+  const linksToLists = page.area === 'wiki'
   const citations = index.citations.get(page.path) ?? []
   const isSource = isSourcePage(page, index.wikiRoot)
   const isLog = page.area === 'wiki' && isLogPage(page.path, index.wikiRoot)
@@ -107,9 +109,13 @@ export function PageView({ page, index, vaultId, heading, readBlob }: PageViewPr
               <div>
                 <dt>type</dt>
                 <dd>
-                  <a className="badge" href={formatRoute({ view: 'type', vaultId, type: page.type })}>
-                    {page.type}
-                  </a>
+                  {linksToLists ? (
+                    <a className="badge" href={formatRoute({ view: 'type', vaultId, type: page.type })}>
+                      {page.type}
+                    </a>
+                  ) : (
+                    <span className="badge">{page.type}</span>
+                  )}
                 </dd>
               </div>
             )}
@@ -118,7 +124,11 @@ export function PageView({ page, index, vaultId, heading, readBlob }: PageViewPr
                 <dt>tags</dt>
                 <dd className="tag-list">
                   {page.tags.map((tag) => (
-                    <a key={tag} className="tag" href={formatRoute({ view: 'tag', vaultId, tag })}>{`#${tag}`}</a>
+                    linksToLists ? (
+                      <a key={tag} className="tag" href={formatRoute({ view: 'tag', vaultId, tag })}>{`#${tag}`}</a>
+                    ) : (
+                      <span key={tag} className="tag">{`#${tag}`}</span>
+                    )
                   ))}
                 </dd>
               </div>

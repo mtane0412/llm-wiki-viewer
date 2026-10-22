@@ -37,6 +37,15 @@ describe('buildWikiIndex', () => {
     expect(index.pageByPath.get('wiki/index.md')?.loaded).toBe(true)
   })
 
+  it('タグは先頭の # を除き、空白だけの値を除き、日付は YYYY-MM-DD の文字列にする', () => {
+    const tagged = buildWikiIndex({
+      markdownFiles: [{ path: 'wiki/a.md', content: page('tags: ["#ai", agent, "", "  ", 2026-10-14]', '本文') }],
+      unloadedMarkdownPaths: [],
+      assetPaths: [],
+    })
+    expect(tagged.pageByPath.get('wiki/a.md')?.tags).toEqual(['ai', 'agent', '2026-10-14'])
+  })
+
   it('index.md をホームページにする', () => {
     expect(index.homePath).toBe('wiki/index.md')
   })

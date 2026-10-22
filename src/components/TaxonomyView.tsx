@@ -17,12 +17,25 @@ interface TaxonomyProps {
   vaultId: string
 }
 
+/** タグか type かの区別です。 */
+type TaxonomyKind = 'tag' | 'type'
+
+/** 値の表示名です。タグは先頭に # を付けます。 */
+function labelOf(kind: TaxonomyKind, value: string): string {
+  return kind === 'tag' ? `#${value}` : value
+}
+
+/** 値で絞り込んだページ一覧の URL です。 */
+function hrefOf(kind: TaxonomyKind, vaultId: string, value: string): string {
+  return kind === 'tag' ? formatRoute({ view: 'tag', vaultId, tag: value }) : formatRoute({ view: 'type', vaultId, type: value })
+}
+
 /** 件数付きの値の一覧の区画です。 */
-function ValueCountSection({ title, items, hrefOf, labelOf, emptyText }: {
+function ValueCountSection({ kind, title, items, vaultId, emptyText }: {
+  kind: TaxonomyKind
   title: string
   items: ValueCount[]
-  hrefOf: (value: string) => string
-  labelOf: (value: string) => string
+  vaultId: string
   emptyText: string
 }) {
   const headingId = useId()
@@ -35,8 +48,8 @@ function ValueCountSection({ title, items, hrefOf, labelOf, emptyText }: {
         <ul className="taxonomy-list">
           {items.map((item) => (
             <li key={item.value}>
-              <a href={hrefOf(item.value)}>
-                {labelOf(item.value)}
+              <a href={hrefOf(kind, vaultId, item.value)}>
+                {labelOf(kind, item.value)}
                 <span className="count">{item.count}</span>
               </a>
             </li>
@@ -52,20 +65,8 @@ export function TaxonomyView({ index, vaultId }: TaxonomyProps) {
   return (
     <div className="taxonomy">
       <h1>タグと type</h1>
-      <ValueCountSection
-        title="type"
-        items={countTypes(index.pages)}
-        hrefOf={(type) => formatRoute({ view: 'type', vaultId, type })}
-        labelOf={(type) => type}
-        emptyText="type を持つページはありません。"
-      />
-      <ValueCountSection
-        title="タグ"
-        items={countTags(index.pages)}
-        hrefOf={(tag) => formatRoute({ view: 'tag', vaultId, tag })}
-        labelOf={(tag) => `#${tag}`}
-        emptyText="タグを持つページはありません。"
-      />
+      <ValueCountSection kind="type" title="type" items={countTypes(index.pages)} vaultId={vaultId} emptyText="type を持つページはありません。" />
+      <ValueCountSection kind="tag" title="タグ" items={countTags(index.pages)} vaultId={vaultId} emptyText="タグを持つページはありません。" />
     </div>
   )
 }
@@ -97,7 +98,7 @@ function FilteredPages({ title, pages, emptyText, vaultId }: { title: string; pa
 
 /** タグを持つページの一覧です。 */
 export function PagesByTagView({ index, vaultId, tag }: TaxonomyProps & { tag: string }) {
-  return <FilteredPages title={`#${tag}`} pages={pagesWithTag(index.pages, tag)} emptyText="このタグを持つページはありません。" vaultId={vaultId} />
+  return <FilteredPages title={labelOf('tag', tag)} pages={pagesWithTag(index.pages, tag)} emptyText="このタグを持つページはありません。" vaultId={vaultId} />
 }
 
 /** type が一致するページの一覧です。 */

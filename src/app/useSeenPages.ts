@@ -6,7 +6,7 @@
  * - 記録の読み書き（IndexedDB）に失敗した場合は、エラーとして返します
  * 判定の方法は lib/changes.ts を参照してください。
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { detectChanges, hashPage, snapshotOf, type PageChange, type SeenState } from '../lib/changes'
 import type { WikiIndex } from '../lib/wikiIndex'
 import type { SeenStore } from '../source/seenStore'
@@ -46,6 +46,8 @@ function messageOf(cause: unknown): string {
 export function useSeenPages(store: SeenStore, vaultId: string | null, index: WikiIndex | null, currentPath: string | null): SeenPagesState {
   const [loaded, setLoaded] = useState<LoadedSeen | null>(null)
   const [error, setError] = useState<SeenError | null>(null)
+  // 保存の途中で次のページを開いても既読を取りこぼさないよう、最新の既読の記録を同期的に持ちます
+  const latest = useRef<LoadedSeen | null>(null)
   const current = loaded !== null && loaded.vaultId === vaultId ? loaded : null
 
   // Wiki を切り替えたら、その Wiki の既読の記録を読み込みます。記録が無ければ現在の全ページを基準にします
@@ -54,13 +56,18 @@ export function useSeenPages(store: SeenStore, vaultId: string | null, index: Wi
     let cancelled = false
     const load = async () => {
       const stored = await store.load(vaultId)
-      const seen = stored ?? snapshotOf(index.pages)
-      if (!stored) await store.save(vaultId, seen)
+      // 読み込みの間に索引が作り直された場合は、古い索引で基準を作らずに終えます
+      if (stored || cancelled) return stored
+      const seen = snapshotOf(index.pages)
+      await store.save(vaultId, seen)
       return seen
     }
     load().then(
       (seen) => {
-        if (!cancelled) setLoaded({ vaultId, seen })
+        if (cancelled || seen === undefined) return
+        latest.current = { vaultId, seen }
+        setLoaded({ vaultId, seen })
+        setError(null)
       },
       (cause: unknown) => {
         if (!cancelled) setError({ vaultId, message: messageOf(cause) })
@@ -77,13 +84,17 @@ export function useSeenPages(store: SeenStore, vaultId: string | null, index: Wi
     const page = index.pageByPath.get(currentPath)
     if (!page || page.area !== 'wiki' || !page.loaded) return
     const hash = hashPage(page)
-    if (current.seen[currentPath] === hash) return
-    const { vaultId: seenVaultId } = current
-    const seen = { ...current.seen, [currentPath]: hash }
+    const base = latest.current?.vaultId === current.vaultId ? latest.current : current
+    if (base.seen[currentPath] === hash) return
+    const next: LoadedSeen = { vaultId: current.vaultId, seen: { ...base.seen, [currentPath]: hash } }
+    latest.current = next
     // 保存できてから既読の状態を更新します（保存に失敗した記録を画面だけで既読扱いにしないため）
-    store.save(seenVaultId, seen).then(
-      () => setLoaded((latest) => (latest?.vaultId === seenVaultId ? { vaultId: seenVaultId, seen: { ...latest.seen, [currentPath]: hash } } : latest)),
-      (cause: unknown) => setError({ vaultId: seenVaultId, message: messageOf(cause) }),
+    store.save(next.vaultId, next.seen).then(
+      () => {
+        setLoaded((shown) => (shown?.vaultId === next.vaultId && latest.current === next ? next : shown))
+        setError(null)
+      },
+      (cause: unknown) => setError({ vaultId: next.vaultId, message: messageOf(cause) }),
     )
   }, [store, current, index, currentPath])
 

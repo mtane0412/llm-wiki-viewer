@@ -2,12 +2,12 @@
  * 最近の更新と、前回の閲覧以降に内容が変わったページを表示するコンポーネントです。
  *
  * - 前回の閲覧以降に変わったページ: 既読の時点から内容が変わったページ（更新あり）と、新しく作られたページ（新規）
- * - 最近更新されたページ: frontmatter の updated の新しい順。updated の無いページは含めず、件数だけを示します
+ * - 最近更新されたページ: frontmatter の updated の新しい順。updated が無いか YYYY-MM-DD の形式でないページは含めず、件数だけを示します
  * LLM が ingest で複数のページを一度に作成・更新したとき、どのページが変わったかを確かめるための画面です。
  */
 import { useId, type ReactNode } from 'react'
 import type { SeenPagesState } from '../app/useSeenPages'
-import { recentlyUpdated, type PageChange } from '../lib/changes'
+import { hasSortableUpdated, recentlyUpdated, type PageChange } from '../lib/changes'
 import { formatRoute } from '../lib/route'
 import type { WikiIndex } from '../lib/wikiIndex'
 
@@ -45,7 +45,7 @@ export function RecentView({ index, vaultId, seenPages }: RecentViewProps) {
 
   const changedPaths = changes ? [...changes.keys()].sort((a, b) => (index.pageByPath.get(a)?.title ?? a).localeCompare(index.pageByPath.get(b)?.title ?? b)) : []
   const updated = recentlyUpdated(index.pages)
-  const withoutUpdated = index.pages.filter((page) => page.area === 'wiki' && page.loaded && page.updated === undefined).length
+  const unsortable = index.pages.filter((page) => page.area === 'wiki' && page.loaded && !hasSortableUpdated(page)).length
 
   return (
     <div className="lint">
@@ -74,7 +74,7 @@ export function RecentView({ index, vaultId, seenPages }: RecentViewProps) {
       <Section title="最近更新されたページ">
         <p className="muted">
           frontmatter の updated の新しい順です。
-          {withoutUpdated > 0 && ` updated の無い ${withoutUpdated} ページは含めていません。`}
+          {unsortable > 0 && ` updated が無いか YYYY-MM-DD の形式でない ${unsortable} ページは含めていません。`}
         </p>
         {updated.length === 0 ? (
           <p className="muted">updated を持つページはありません。</p>

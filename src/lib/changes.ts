@@ -21,22 +21,39 @@ function isTracked(page: WikiPage): boolean {
   return page.area === 'wiki' && page.loaded
 }
 
+/** ページごとの計算済みのハッシュです。索引が作り直されるとページも作り直されるため、古いページごと捨てられます。 */
+const hashCache = new WeakMap<WikiPage, string>()
+
 /**
- * ページの内容（frontmatter と本文）のハッシュを計算します（32 ビットの FNV-1a を 16 進数にしたもの）。
+ * 文字列の 53 ビットのハッシュ（cyrb53）を 16 進数で返します。
  *
- * 変化の検知にだけ使うため、暗号学的な強さは必要ありません。
+ * 変化の検知にだけ使うため暗号学的な強さは必要ありませんが、編集を見逃さないよう衝突しにくい 53 ビットにします。
+ */
+function cyrb53(text: string): string {
+  let h1 = 0xdeadbeef
+  let h2 = 0x41c6ce57
+  for (let position = 0; position < text.length; position++) {
+    const code = text.charCodeAt(position)
+    h1 = Math.imul(h1 ^ code, 2654435761)
+    h2 = Math.imul(h2 ^ code, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16)
+}
+
+/**
+ * ページの内容（frontmatter と本文）のハッシュを返します。同じページの 2 回目以降は計算済みの値を返します。
  *
  * @param page - ページ
  * @returns ハッシュの文字列
  */
 export function hashPage(page: WikiPage): string {
-  const text = JSON.stringify([page.frontmatter, page.body])
-  let hash = 0x811c9dc5
-  for (let position = 0; position < text.length; position++) {
-    hash ^= text.charCodeAt(position)
-    hash = Math.imul(hash, 0x01000193)
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0')
+  const cached = hashCache.get(page)
+  if (cached !== undefined) return cached
+  const hash = cyrb53(JSON.stringify([page.frontmatter, page.body]))
+  hashCache.set(page, hash)
+  return hash
 }
 
 /**
@@ -66,14 +83,22 @@ export function detectChanges(pages: WikiPage[], seen: SeenState): Map<string, P
   return changes
 }
 
+/** 日付の順に並べられる updated の形式（YYYY-MM-DD で始まるもの）です。 */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}/
+
+/** ページの updated が、日付の順に並べられる形式かを判定します。 */
+export function hasSortableUpdated(page: WikiPage): boolean {
+  return page.updated !== undefined && ISO_DATE.test(page.updated)
+}
+
 /**
  * frontmatter の updated があるページを、新しい順に並べます。
  *
  * @param pages - 索引のページ
- * @returns updated の新しい順（同じ日付ならタイトルの順）のページ。updated の無いページは含みません
+ * @returns updated の新しい順（同じ日付ならタイトルの順）のページ。updated が無いか YYYY-MM-DD の形式でないページは含みません
  */
 export function recentlyUpdated(pages: WikiPage[]): WikiPage[] {
   return pages
-    .filter((page) => page.area === 'wiki' && page.updated !== undefined)
+    .filter((page) => page.area === 'wiki' && hasSortableUpdated(page))
     .sort((a, b) => (b.updated ?? '').localeCompare(a.updated ?? '') || a.title.localeCompare(b.title))
 }

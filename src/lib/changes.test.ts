@@ -62,4 +62,13 @@ describe('recentlyUpdated', () => {
   it('updated のあるページを新しい順（同じ日付ならタイトルの順）に並べ、updated の無いページは含めない', () => {
     expect(recentlyUpdated(after.pages).map((page) => page.title)).toEqual(['エージェント', 'ツール使用', '目次'])
   })
+
+  it('updated が YYYY-MM-DD の形式でないページは、日付の順に並べられないため含めない', () => {
+    const informal = indexOf([
+      { path: 'wiki/a.md', content: '---\ntitle: 10 月 9 日\nupdated: 2026-10-9\n---\n本文' },
+      { path: 'wiki/b.md', content: '---\ntitle: 10 月 10 日\nupdated: 2026-10-10\n---\n本文' },
+      { path: 'wiki/c.md', content: '---\ntitle: 英語の日付\nupdated: March 5\n---\n本文' },
+    ])
+    expect(recentlyUpdated(informal.pages).map((page) => page.title)).toEqual(['10 月 10 日'])
+  })
 })

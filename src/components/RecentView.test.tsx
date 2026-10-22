@@ -22,7 +22,7 @@ describe('RecentView', () => {
     expect(items.map((item) => within(item).getByRole('link').textContent)).toEqual(['ツール使用', '記憶'])
     expect(items[0]).toHaveTextContent('2026-10-20')
     expect(items[1]).toHaveTextContent('更新あり')
-    expect(recent).toHaveTextContent('updated の無い 1 ページは含めていません。')
+    expect(recent).toHaveTextContent('updated が無いか YYYY-MM-DD の形式でない 1 ページは含めていません。')
   })
 
   it('既読の記録を読み書きできなかった場合は、エラーとして表示する', () => {

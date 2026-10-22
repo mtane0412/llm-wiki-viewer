@@ -5,7 +5,7 @@
  * ノードをクリックするとそのページへ移動します。描画には react-force-graph-2d（canvas）を使います。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import ForceGraph2D from 'react-force-graph-2d'
+import ForceGraph2D, { type ForceGraphMethods } from 'react-force-graph-2d'
 import { buildGraphData, type GraphNode } from '../lib/graph'
 import { formatRoute } from '../lib/route'
 import type { WikiIndex } from '../lib/wikiIndex'
@@ -21,9 +21,13 @@ export interface GraphViewProps {
 /** グループの色分けに使う色です。CSS 変数 --graph-1 〜 --graph-8 を順に割り当てます。 */
 const PALETTE_SIZE = 8
 /** 拡大率がこの値以上になったら、すべてのノードにラベルを表示します。 */
-const LABEL_ZOOM_THRESHOLD = 1.6
-/** 拡大率に関わらずラベルを表示するノードのリンク本数の下限です。 */
-const LABEL_DEGREE_THRESHOLD = 8
+const LABEL_ZOOM_THRESHOLD = 2.5
+/** 拡大率に関わらずラベルを表示する、リンク本数の多いノードの件数です。 */
+const ALWAYS_LABELED_COUNT = 12
+/** ノード同士の反発の強さです（負の値ほど強く離れます）。 */
+const CHARGE_STRENGTH = -90
+/** ノードの大きさの基準（半径の係数）です。 */
+const NODE_REL_SIZE = 3
 
 /** CSS 変数の値を読み取ります。 */
 function cssVar(name: string): string {
@@ -59,6 +63,16 @@ export default function GraphView({ index, vaultId, onNavigate }: GraphViewProps
     return (group: string) => map.get(group) ?? cssVar('--muted')
   }, [groups])
   const [containerRef, size] = useElementSize<HTMLDivElement>()
+  const graphRef = useRef<ForceGraphMethods<GraphNode> | undefined>(undefined)
+  // リンクの多い上位のノードだけ、縮小表示でもラベルを出します
+  const labeled = useMemo(
+    () => new Set([...data.nodes].sort((a, b) => b.degree - a.degree).slice(0, ALWAYS_LABELED_COUNT).map((node) => node.id)),
+    [data],
+  )
+
+  useEffect(() => {
+    graphRef.current?.d3Force('charge')?.strength(CHARGE_STRENGTH)
+  }, [data])
 
   return (
     <div className="graph">
@@ -77,23 +91,27 @@ export default function GraphView({ index, vaultId, onNavigate }: GraphViewProps
       </div>
       <div className="graph-canvas" ref={containerRef}>
         <ForceGraph2D<GraphNode>
+          ref={graphRef}
           graphData={data}
+          nodeRelSize={NODE_REL_SIZE}
+          cooldownTicks={200}
+          onEngineStop={() => graphRef.current?.zoomToFit(400, 40)}
           width={size.width}
           height={size.height}
           nodeId="id"
           nodeLabel="label"
-          nodeVal={(node) => 1 + node.degree}
+          nodeVal={(node) => 1 + Math.sqrt(node.degree)}
           nodeColor={(node) => colorOf(node.group)}
           linkColor={() => cssVar('--graph-link')}
           nodeCanvasObjectMode={() => 'after'}
           nodeCanvasObject={(node, context, globalScale) => {
-            if (globalScale < LABEL_ZOOM_THRESHOLD && node.degree < LABEL_DEGREE_THRESHOLD) return
+            if (globalScale < LABEL_ZOOM_THRESHOLD && !labeled.has(node.id)) return
             const fontSize = 12 / globalScale
             context.font = `${fontSize}px sans-serif`
             context.textAlign = 'center'
             context.textBaseline = 'top'
             context.fillStyle = cssVar('--text')
-            context.fillText(node.label, node.x ?? 0, (node.y ?? 0) + Math.sqrt(1 + node.degree) * 4 + 2)
+            context.fillText(node.label, node.x ?? 0, (node.y ?? 0) + Math.sqrt(1 + Math.sqrt(node.degree)) * NODE_REL_SIZE + 2)
           }}
           onNodeClick={(node) => onNavigate(formatRoute({ view: 'page', vaultId, path: node.id, heading: undefined }))}
         />

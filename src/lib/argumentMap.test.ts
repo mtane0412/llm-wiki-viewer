@@ -139,6 +139,18 @@ describe('論点マップの Lint', () => {
     expect(issues).toEqual([{ kind: 'one-sided-position', page: 'wiki/立場.md', missing: 'supports' }])
   })
 
+  it('複数の論点に対する立場でも、偏りの指摘は 1 件にまとめる', () => {
+    const issues = argumentIssues(
+      indexOf([
+        { path: 'wiki/給食の論点.md', content: page('type: issue') },
+        { path: 'wiki/教材の論点.md', content: page('type: issue') },
+        { path: 'wiki/立場.md', content: page('type: position\nissue: ["[[給食の論点]]", "[[教材の論点]]"]') },
+        { path: 'wiki/論拠.md', content: page('type: argument\nsupports: "[[立場]]"\nsources: ["[[給食の論点]]"]') },
+      ]).issues,
+    )
+    expect(issues).toEqual([{ kind: 'one-sided-position', page: 'wiki/立場.md', missing: 'opposes' }])
+  })
+
   it('論拠がまだ 1 つも無い立場は、偏りとしては指摘しない', () => {
     const issues = argumentIssues(
       indexOf([

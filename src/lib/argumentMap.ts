@@ -147,8 +147,12 @@ export function argumentLintIssues(index: ArgumentMapSource): LintIssue[] {
     if (page.type === 'argument' && page.sources.length === 0) issues.push({ kind: 'unsourced-argument', page: page.path })
   }
 
+  // 複数の論点に対する立場は木に何度も現れるため、指摘済みの立場を記録して 1 件にまとめます
+  const reportedPositions = new Set<string>()
   for (const issue of buildArgumentMap(index)) {
     for (const position of issue.positions) {
+      if (reportedPositions.has(position.path)) continue
+      reportedPositions.add(position.path)
       const hasSupports = position.supports.length > 0
       const hasOpposes = position.opposes.length > 0
       if (hasSupports !== hasOpposes) issues.push({ kind: 'one-sided-position', page: position.path, missing: hasSupports ? 'opposes' : 'supports' })

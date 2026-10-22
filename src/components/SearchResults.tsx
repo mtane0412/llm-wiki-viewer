@@ -27,7 +27,11 @@ export function SearchResults({ results, showVaultName }: SearchResultsProps) {
       <ul>
         {results.map((result) => (
           <li key={`${result.vaultId}:${result.path}`}>
-            <a href={formatRoute({ view: 'page', vaultId: result.vaultId, path: result.path, heading: undefined })}>
+            {/* 抜粋を含めない名前を明示し、ブラウザ操作エージェントや読み上げでリンク先を判別しやすくします */}
+            <a
+              href={formatRoute({ view: 'page', vaultId: result.vaultId, path: result.path, heading: undefined })}
+              aria-label={showVaultName ? `${result.title}（${result.vaultName}）` : result.title}
+            >
               <span className="search-title">{result.title}</span>
               {showVaultName && <span className="search-vault">{result.vaultName}</span>}
               {result.snippet && <span className="search-snippet">{result.snippet}</span>}

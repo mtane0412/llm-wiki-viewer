@@ -280,4 +280,66 @@ describe('App', () => {
     await user.upload(input, [file])
     expect(await screen.findByRole('heading', { level: 1, name: '目次だけの Wiki' })).toBeInTheDocument()
   })
+
+  it('タブのタイトルに、表示中のページと Wiki の名前を出す', async () => {
+    // 前提: スタート画面ではアプリ名だけ。Wiki を開くとホームページ（Index）を表示する
+    const { user } = renderApp({ pick: [createFakeFileSystem('agent-wiki', agentWiki).root] })
+    await user.click(await screen.findByRole('button', { name: 'Wiki フォルダを開く' }))
+    await screen.findByRole('heading', { level: 1, name: 'Index' })
+    await waitFor(() => expect(document.title).toBe('Index - agent-wiki - LLM Wiki Viewer'))
+
+    // 検証: 別の画面へ移るとタイトルも変わる
+    await user.click(screen.getByRole('link', { name: /Lint/ }))
+    await waitFor(() => expect(document.title).toBe('Lint - agent-wiki - LLM Wiki Viewer'))
+  })
+
+  it('検索結果の URL を開くと、メインの領域に検索結果を表示する', async () => {
+    const { user } = renderApp({ pick: [createFakeFileSystem('agent-wiki', agentWiki).root] })
+    await user.click(await screen.findByRole('button', { name: 'Wiki フォルダを開く' }))
+    await screen.findByRole('heading', { level: 1, name: 'Index' })
+    // 前提: Wiki の id は開くたびに変わるため、現在の URL から取り出す
+    const vaultId = window.location.hash.split('/')[1]
+
+    act(() => {
+      window.location.hash = `#/${vaultId}/search?q=${encodeURIComponent('シェル')}`
+    })
+
+    const main = screen.getByRole('main')
+    expect(await within(main).findByRole('heading', { level: 1, name: '「シェル」の検索結果' })).toBeInTheDocument()
+    expect(within(main).getByRole('link', { name: 'Tool use' })).toBeInTheDocument()
+  })
+
+  it('読み取り許可が切れた Wiki の検索結果の URL では、検索結果の代わりに再接続ボタンを表示する', async () => {
+    // 前提: 登録済みだが読み取り許可が切れている Wiki の検索結果の URL を直接開く
+    const store = createMemoryStore()
+    const fs = createFakeFileSystem('agent-wiki', agentWiki, { permission: 'prompt' })
+    const registered = await createVaultRegistry(store).add(fs.root)
+    window.location.hash = `#/${registered.id}/search?q=${encodeURIComponent('シェル')}`
+
+    const { user } = renderApp({ store })
+    await user.click(await screen.findByRole('button', { name: 'agent-wiki に再接続' }))
+
+    // 検証: 再接続すると、検索結果を表示する
+    const main = screen.getByRole('main')
+    expect(await within(main).findByRole('link', { name: 'Tool use' })).toBeInTheDocument()
+  })
+
+  it('すべての Wiki を対象にした検索結果の URL では、ほかの Wiki のページも表示する', async () => {
+    const { user } = renderApp({
+      pick: [createFakeFileSystem('agent-wiki', agentWiki).root, createFakeFileSystem('cooking-wiki', cookingWiki).root],
+    })
+    await user.click(await screen.findByRole('button', { name: 'Wiki フォルダを開く' }))
+    await screen.findByRole('heading', { level: 1, name: 'Index' })
+    await user.click(screen.getByRole('button', { name: 'フォルダを追加' }))
+    await screen.findByRole('heading', { level: 1, name: '料理の目次' })
+    const vaultId = window.location.hash.split('/')[1]
+
+    act(() => {
+      window.location.hash = `#/${vaultId}/search?q=${encodeURIComponent('シェル')}&all=1`
+    })
+
+    const main = screen.getByRole('main')
+    expect(await within(main).findByRole('link', { name: '出汁（cooking-wiki）' })).toBeInTheDocument()
+    expect(within(main).getByRole('link', { name: 'Tool use（agent-wiki）' })).toBeInTheDocument()
+  })
 })

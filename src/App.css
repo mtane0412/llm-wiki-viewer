@@ -288,26 +288,29 @@
   padding-left: 0.25rem;
 }
 
-.tree summary,
-.tree-raw > summary {
+/* フォルダの開閉ボタンです。ボタンの既定の見た目を消し、行全体を押せるようにします */
+.tree-toggle {
   display: flex;
   justify-content: space-between;
+  width: 100%;
   padding: 0.2rem 0.5rem;
+  border: 0;
   border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
-  list-style: none;
 }
 
-.tree summary::-webkit-details-marker,
-.tree-raw > summary::-webkit-details-marker {
-  display: none;
-}
-
-.tree summary::before,
-.tree-raw > summary::before {
+.tree-toggle::before {
   content: '▸';
   width: 1em;
   color: var(--muted);
+}
+
+.tree-toggle[aria-expanded='true']::before {
+  content: '▾';
 }
 
 details[open] > summary::before {
@@ -404,7 +407,8 @@ details[open] > summary::before {
 
 .page,
 .lint,
-.taxonomy {
+.taxonomy,
+.search-view {
   max-width: 46rem;
   margin: 0 auto;
 }

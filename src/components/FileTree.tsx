@@ -65,13 +65,17 @@ function Collapsible({ label, count, initiallyOpen, className, children }: { lab
     if (initiallyOpen) setOpen(true)
   }
   return (
-    <details className={className} open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary>
+    <div className={className}>
+      {/*
+        details/summary はブラウザ操作エージェントからボタンとして見えないため、aria-expanded つきのボタンにします。
+        エージェントの一部は入れ子の要素の文字を名前に使わないため、名前は aria-label で明示します
+      */}
+      <button type="button" className="tree-toggle" aria-expanded={open} aria-label={`${label}（${count} ページ）`} onClick={() => setOpen(!open)}>
         <span className="tree-folder">{label}</span>
         <span className="tree-count">{count}</span>
-      </summary>
+      </button>
       {open && children()}
-    </details>
+    </div>
   )
 }
 
@@ -93,6 +97,8 @@ function FolderNode({ folder, vaultId, currentPath }: { folder: TreeFolder; vaul
             href={formatRoute({ view: 'page', vaultId, path: page.path, heading: undefined })}
             className="tree-page"
             aria-current={page.path === currentPath ? 'page' : undefined}
+            // ブラウザ操作エージェントの一部は title 属性を本文より優先して名前にするため、ページのタイトルを明示します
+            aria-label={page.title}
             title={page.path}
           >
             {page.title}

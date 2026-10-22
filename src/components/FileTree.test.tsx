@@ -32,4 +32,24 @@ describe('FileTree', () => {
     render(<FileTree index={index} vaultId="v1" currentPath="wiki/concepts/tool-use.md" />)
     expect(screen.getByRole('link', { name: 'Tool use' })).toHaveAttribute('aria-current', 'page')
   })
+
+  it('フォルダの開閉は、開いているかどうかが分かるボタンにする', async () => {
+    const user = userEvent.setup()
+    render(<FileTree index={index} vaultId="v1" currentPath="wiki/index.md" />)
+    // ブラウザ操作エージェントの一部は入れ子の要素の文字を名前に使わないため、名前は aria-label で明示します
+    const toggle = screen.getByRole('button', { name: 'concepts（1 ページ）' })
+    expect(toggle).toHaveAttribute('aria-label', 'concepts（1 ページ）')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('link', { name: 'Tool use' })).toBeInTheDocument()
+  })
+
+  it('ページのリンクには、パスの title 属性より優先される名前としてページのタイトルを付ける', () => {
+    // ブラウザ操作エージェントの一部は、リンクの名前に title 属性を本文より優先して使うため、aria-label で明示します
+    render(<FileTree index={index} vaultId="v1" currentPath="wiki/index.md" />)
+    const link = screen.getByRole('link', { name: 'index' })
+    expect(link).toHaveAttribute('aria-label', 'index')
+    expect(link).toHaveAttribute('title', 'wiki/index.md')
+  })
 })

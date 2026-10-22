@@ -6,6 +6,7 @@
  */
 import { pipeline, type FeatureExtractionPipeline } from '@huggingface/transformers'
 import { createDownloadProgressCallback, serveWorker } from '../worker/rpc'
+import { checkWebGpuFp16 } from '../worker/webgpu'
 import { EMBEDDING_MODEL_ID, EMBEDDING_PREFIX, type EmbeddingDevice, type EmbeddingOutput, type EmbeddingProgress } from './embedder'
 
 /** 1 回にまとめて埋め込む意見の件数です。進捗を細かく知らせ、メモリの使用量を抑えるために分けます。 */
@@ -18,25 +19,17 @@ interface LoadedPipeline {
 }
 
 let loading: Promise<LoadedPipeline> | null = null
+/**
+ * 進捗を知らせる先（いま処理中の依頼）です。パイプラインの読み込み中に次の依頼が来た場合も、その依頼にダウンロードの進捗が届くようにします。
+ */
+let activeReport: ((progress: EmbeddingProgress) => void) | null = null
 
-/** WebGPU で fp16 のモデルを動かせるかを調べます。 */
-async function supportsWebGpuFp16(): Promise<boolean> {
-  if (!('gpu' in navigator) || !navigator.gpu) return false
-  try {
-    const adapter = await navigator.gpu.requestAdapter()
-    return adapter?.features.has('shader-f16') ?? false
-  } catch {
-    // ブラウザやドライバーによっては requestAdapter が例外を投げるため、WebGPU を使えない環境として扱います
-    return false
-  }
-}
-
-/** 指定した手段でパイプラインを作ります。ダウンロードの進捗は全ファイルの合計にして知らせます。 */
-async function createPipeline(device: EmbeddingDevice, report: (progress: EmbeddingProgress) => void): Promise<FeatureExtractionPipeline> {
+/** 指定した手段でパイプラインを作ります。ダウンロードの進捗は全ファイルの合計にして、処理中の依頼に知らせます。 */
+async function createPipeline(device: EmbeddingDevice): Promise<FeatureExtractionPipeline> {
   return pipeline('feature-extraction', EMBEDDING_MODEL_ID, {
     device,
     dtype: device === 'webgpu' ? 'fp16' : 'q8',
-    progress_callback: createDownloadProgressCallback(report),
+    progress_callback: createDownloadProgressCallback((progress) => activeReport?.(progress)),
   })
 }
 
@@ -44,19 +37,20 @@ async function createPipeline(device: EmbeddingDevice, report: (progress: Embedd
  * パイプラインを読み込みます。WebGPU で動かせる環境では WebGPU で作り、作れなかった場合は WASM で 1 度だけ作り直します。
  * どちらで動かしたかは結果の device で画面に返すため、暗黙には切り替わりません。
  */
-async function loadPipeline(report: (progress: EmbeddingProgress) => void): Promise<LoadedPipeline> {
-  if (await supportsWebGpuFp16()) {
+async function loadPipeline(): Promise<LoadedPipeline> {
+  if ((await checkWebGpuFp16()).ok) {
     try {
-      return { extractor: await createPipeline('webgpu', report), device: 'webgpu' }
+      return { extractor: await createPipeline('webgpu'), device: 'webgpu' }
     } catch {
       // WebGPU の初期化に失敗するドライバーがあるため、WASM で作り直します（WASM でも失敗した場合はその例外を返します）
     }
   }
-  return { extractor: await createPipeline('wasm', report), device: 'wasm' }
+  return { extractor: await createPipeline('wasm'), device: 'wasm' }
 }
 
 serveWorker<string[], EmbeddingOutput, EmbeddingProgress>(async (texts, report) => {
-  loading ??= loadPipeline(report)
+  activeReport = report
+  loading ??= loadPipeline()
   let loaded: LoadedPipeline
   try {
     loaded = await loading

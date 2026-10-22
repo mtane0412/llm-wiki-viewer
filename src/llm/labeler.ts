@@ -10,6 +10,7 @@
  */
 import type { ChatMessage } from '../lib/clusterLabels'
 import { createWorkerCaller, type DownloadProgress } from '../worker/rpc'
+import { checkWebGpuFp16, type WebGpuSupport } from '../worker/webgpu'
 
 /** LLM の id（Hugging Face のリポジトリ名）です。 */
 export const LABEL_MODEL_ID = 'onnx-community/Qwen3.5-0.8B-Text-ONNX'
@@ -18,7 +19,7 @@ export const LABEL_MODEL_ID = 'onnx-community/Qwen3.5-0.8B-Text-ONNX'
 export type GenerationProgress = DownloadProgress | { phase: 'generating' }
 
 /** この環境でラベルを生成できるかの判定です。 */
-export type LabelerSupport = { ok: true } | { ok: false; reason: string }
+export type LabelerSupport = WebGpuSupport
 
 /** ラベルを生成する LLM です。テストでは偽の実装に差し替えます。 */
 export interface Labeler {
@@ -39,27 +40,6 @@ export interface Labeler {
 }
 
 /**
- * WebGPU で 16 ビット浮動小数点数（shader-f16）のモデルを動かせるかを調べます。
- *
- * @returns 判定。動かせない場合は理由を持ちます
- */
-async function checkWebGpuFp16(): Promise<LabelerSupport> {
-  if (!('gpu' in navigator) || !navigator.gpu) {
-    return { ok: false, reason: 'このブラウザは WebGPU に対応していないため、ブラウザ内の LLM でラベルを生成できません。Chrome・Edge の最新版で開くと生成できます。' }
-  }
-  try {
-    const adapter = await navigator.gpu.requestAdapter()
-    if (!adapter) return { ok: false, reason: 'WebGPU で使える GPU が見つからないため、ブラウザ内の LLM でラベルを生成できません。' }
-    if (!adapter.features.has('shader-f16')) {
-      return { ok: false, reason: 'GPU が 16 ビット浮動小数点数（shader-f16）に対応していないため、ブラウザ内の LLM でラベルを生成できません。' }
-    }
-    return { ok: true }
-  } catch (cause) {
-    return { ok: false, reason: `WebGPU を初期化できないため、ブラウザ内の LLM でラベルを生成できません（${cause instanceof Error ? cause.message : String(cause)}）。` }
-  }
-}
-
-/**
  * Web Worker で LLM を動かすラベルの生成器を作ります。Worker は最初に generate を呼んだときに起動し、以後は使い回します。
  *
  * @returns ラベルの生成器
@@ -69,7 +49,10 @@ export function createWorkerLabeler(): Labeler {
   return {
     modelId: LABEL_MODEL_ID,
     downloadSizeLabel: '約 490 MB',
-    checkSupport: checkWebGpuFp16,
+    checkSupport: async () => {
+      const support = await checkWebGpuFp16()
+      return support.ok ? support : { ok: false, reason: `${support.reason}そのため、ブラウザ内の LLM でラベルを生成できません。` }
+    },
     generate: call,
   }
 }

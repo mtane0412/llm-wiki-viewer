@@ -14,9 +14,18 @@ import { LABEL_MODEL_ID, type GenerationProgress } from './labeler'
 const MAX_NEW_TOKENS = 256
 
 let loading: Promise<TextGenerationPipeline> | null = null
+/**
+ * 進捗を知らせる先（いま処理中の依頼）です。パイプラインの読み込み中に次の依頼が来た場合も、その依頼にダウンロードの進捗が届くようにします。
+ */
+let activeReport: ((progress: GenerationProgress) => void) | null = null
 
 serveWorker<ChatMessage[], string, GenerationProgress>(async (messages, report) => {
-  loading ??= pipeline('text-generation', LABEL_MODEL_ID, { device: 'webgpu', dtype: 'q4f16', progress_callback: createDownloadProgressCallback(report) })
+  activeReport = report
+  loading ??= pipeline('text-generation', LABEL_MODEL_ID, {
+    device: 'webgpu',
+    dtype: 'q4f16',
+    progress_callback: createDownloadProgressCallback((progress) => activeReport?.(progress)),
+  })
   let generator: TextGenerationPipeline
   try {
     generator = await loading

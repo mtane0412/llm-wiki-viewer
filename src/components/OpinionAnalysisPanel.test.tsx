@@ -257,6 +257,56 @@ describe('意見クラスタのラベル付け', () => {
     expect(deps.labeler.generate).toHaveBeenCalledTimes(2)
   })
 
+  it('生成の途中で LLM が失敗しても生成済みのラベルは残し、もう一度押すと足りないクラスタだけを生成する', async () => {
+    const labeler = createFakeLabeler()
+    const original = labeler.generate.getMockImplementation()
+    // 前提: 2 回目の呼び出し（クラスタ 2）だけ、Worker のエラーで失敗します
+    labeler.generate.mockImplementationOnce(original!).mockRejectedValueOnce(new Error('GPU のデバイスが失われました'))
+    const user = userEvent.setup()
+    renderPanel({ embedder: createFakeEmbedder(), labeler, cache: createMemoryStore() })
+    await analyzeIntoTwoClusters(user)
+    await user.click(screen.getByRole('button', { name: 'ラベルを生成' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('GPU のデバイスが失われました')
+    expect(screen.getByRole('button', { name: /給食の改善（3 件）/ })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'ラベルを生成' }))
+    expect(await screen.findByRole('button', { name: /公園の整備（2 件）/ })).toBeInTheDocument()
+    expect(labeler.generate).toHaveBeenCalledTimes(3)
+  })
+
+  it('形式の誤りで生成できなかったクラスタは、キャッシュから開き直しても失敗として表示する', async () => {
+    const labeler = createFakeLabeler()
+    labeler.generate.mockImplementation(async (messages: ChatMessage[]) =>
+      messages.some((message) => message.content.includes('給食')) ? '{"label": "給食の改善", "description": "給食の意見です。"}' : '公園についての意見です',
+    )
+    const deps = { embedder: createFakeEmbedder(), labeler, cache: createMemoryStore() }
+    const user = userEvent.setup()
+    const { unmount } = renderPanel(deps)
+    await analyzeIntoTwoClusters(user)
+    await user.click(screen.getByRole('button', { name: 'ラベルを生成' }))
+    await screen.findByRole('alert')
+    unmount()
+
+    renderPanel(deps)
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'クラスタ数' }), '2')
+    expect(await screen.findByRole('alert')).toHaveTextContent('クラスタ 2 のラベルを生成できませんでした')
+  })
+
+  it('生成中にクラスタ数を変えると、残りのクラスタのラベルは生成しない', async () => {
+    const labeler = createFakeLabeler()
+    let finishFirst: (value: string) => void = () => {}
+    // 前提: 1 つ目のクラスタの生成は、finishFirst を呼ぶまで終わりません
+    labeler.generate.mockImplementationOnce(() => new Promise<string>((resolve) => (finishFirst = resolve)))
+    const user = userEvent.setup()
+    renderPanel({ embedder: createFakeEmbedder(), labeler, cache: createMemoryStore() })
+    await analyzeIntoTwoClusters(user)
+    await user.click(screen.getByRole('button', { name: 'ラベルを生成' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'クラスタ数' }), '3')
+    finishFirst('{"label": "給食の改善", "description": "給食の意見です。"}')
+    await screen.findByRole('button', { name: 'ラベルを生成' })
+    expect(labeler.generate).toHaveBeenCalledTimes(1)
+  })
+
   it('書き出す JSON に、生成したラベルを含める', async () => {
     const createObjectURL = vi.fn((_blob: Blob) => 'blob:結果')
     URL.createObjectURL = createObjectURL

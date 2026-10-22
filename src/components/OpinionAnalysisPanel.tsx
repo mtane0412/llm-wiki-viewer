@@ -6,11 +6,11 @@
  * クラスタ数を変えても埋め込みは使い回します。結果は JSON で書き出せます。
  * 「ラベルを生成」を押すと、各クラスタの代表的な意見からブラウザ内の LLM で見出しと説明を生成します（クラスタ数ごとにキャッシュします）。
  */
-import { useContext, useEffect, useId, useMemo, useState } from 'react'
+import { useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { OpinionAnalysisContext, type OpinionAnalysisDeps } from '../app/opinionAnalysis'
 import type { EmbeddingDevice, EmbeddingProgress } from '../embedding/embedder'
 import type { GenerationProgress, LabelerSupport } from '../llm/labeler'
-import { buildLabelMessages, parseLabelOutput, pickBasisComments, type ClusterLabel } from '../lib/clusterLabels'
+import { buildLabelMessages, LABEL_PROMPT_VERSION, parseLabelOutput, pickBasisComments, type ClusterLabel } from '../lib/clusterLabels'
 import { analysisCacheKey, clusterOpinions, serializeClusterJson, type OpinionClusterResult } from '../lib/opinionClusters'
 import type { Comment } from '../lib/opinions'
 import { basename } from '../lib/path'
@@ -82,6 +82,18 @@ function downloadJson(json: string, fileName: string): void {
   URL.revokeObjectURL(url)
 }
 
+/** 形式の誤りなどでラベルを生成できなかったクラスタと、その理由です。 */
+interface LabelFailure {
+  clusterId: number
+  message: string
+}
+
+/** キャッシュに保存するラベルの生成の結果です。失敗したクラスタも保存し、開き直したときに失敗として示します。 */
+interface CachedLabels {
+  labels: ClusterLabel[]
+  failures: LabelFailure[]
+}
+
 /** ラベルの生成の状態です。 */
 type LabelingState =
   | { status: 'idle' }
@@ -92,10 +104,19 @@ type LabelingState =
 /** 分析結果に、LLM によるラベルの生成を加えた部分です。クラスタ数ごとに作り直します。 */
 function LabeledClusters({ path, result, deps, embeddingKey }: { path: string; result: OpinionClusterResult; deps: OpinionAnalysisDeps; embeddingKey: string }) {
   const { embedder, labeler, cache } = deps
-  const labelKey = `labels:${embeddingKey}:${result.clusters.length}:${labeler.modelId}`
+  // プロンプトの版と根拠の件数もキーに含め、生成の条件を変えたら古いラベルを使わないようにします
+  const labelKey = `labels:v${LABEL_PROMPT_VERSION}:${BASIS_COMMENT_COUNT}:${embeddingKey}:${result.clusters.length}:${labeler.modelId}`
   const [support, setSupport] = useState<LabelerSupport | null>(null)
   const [labels, setLabels] = useState<ClusterLabel[]>([])
-  const [failures, setFailures] = useState<{ clusterId: number; message: string }[]>([])
+  const [failures, setFailures] = useState<LabelFailure[]>([])
+  // クラスタ数を変えて作り直された後は、古い部品の生成を続けないようにします
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
   const [labeling, setLabeling] = useState<LabelingState>({ status: 'idle' })
   const [cacheError, setCacheError] = useState<string | null>(null)
 
@@ -105,9 +126,11 @@ function LabeledClusters({ path, result, deps, embeddingKey }: { path: string; r
     labeler.checkSupport().then((value) => {
       if (!cancelled) setSupport(value)
     })
-    cache.get<ClusterLabel[]>(labelKey).then(
+    cache.get<CachedLabels>(labelKey).then(
       (cached) => {
-        if (!cancelled && cached) setLabels(cached)
+        if (cancelled || !cached) return
+        setLabels(cached.labels)
+        setFailures(cached.failures)
       },
       (cause: unknown) => {
         if (!cancelled) setCacheError(`ラベルのキャッシュを読めませんでした: ${cause instanceof Error ? cause.message : String(cause)}`)
@@ -118,35 +141,52 @@ function LabeledClusters({ path, result, deps, embeddingKey }: { path: string; r
     }
   }, [labeler, cache, labelKey])
 
-  const generate = async () => {
-    const generated: ClusterLabel[] = []
-    const failed: { clusterId: number; message: string }[] = []
-    setFailures([])
+  /** 生成の結果を表示し、キャッシュに保存します。 */
+  const saveLabels = async (saved: CachedLabels) => {
+    setLabels(saved.labels)
+    setFailures(saved.failures)
     try {
-      for (const cluster of result.clusters) {
-        setLabeling({ status: 'running', clusterId: cluster.id, progress: null })
-        const basis = pickBasisComments(result, cluster.id, BASIS_COMMENT_COUNT)
-        const output = await labeler.generate(buildLabelMessages(basis), (progress) => setLabeling({ status: 'running', clusterId: cluster.id, progress }))
-        // 出力が想定の形式でないクラスタは、空のラベルにせず失敗として記録し、ほかのクラスタの生成は続けます
-        try {
-          generated.push({ clusterId: cluster.id, ...parseLabelOutput(output), basisCommentIds: basis.map((comment) => comment.id) })
-        } catch (cause) {
-          failed.push({ clusterId: cluster.id, message: cause instanceof Error ? cause.message : String(cause) })
-        }
-      }
-    } catch (cause) {
-      setLabeling({ status: 'error', message: cause instanceof Error ? cause.message : String(cause) })
-      return
-    }
-    setLabels(generated)
-    setFailures(failed)
-    setLabeling({ status: 'idle' })
-    try {
-      await cache.set(labelKey, generated)
+      await cache.set(labelKey, saved)
       setCacheError(null)
     } catch (cause) {
       setCacheError(`ラベルをキャッシュに保存できませんでした: ${cause instanceof Error ? cause.message : String(cause)}`)
     }
+  }
+
+  /** ラベルの無いクラスタのラベルを、クラスタの順に 1 つずつ生成します。生成済みのラベルは作り直しません。 */
+  const generate = async () => {
+    let generated = labels
+    const failed: LabelFailure[] = []
+    setFailures([])
+    for (const cluster of result.clusters.filter((item) => !labels.some((label) => label.clusterId === item.id))) {
+      if (!mounted.current) return
+      setLabeling({ status: 'running', clusterId: cluster.id, progress: null })
+      const basis = pickBasisComments(result, cluster.id, BASIS_COMMENT_COUNT)
+      let output: string
+      try {
+        output = await labeler.generate(buildLabelMessages(basis), (progress) => {
+          if (mounted.current) setLabeling({ status: 'running', clusterId: cluster.id, progress })
+        })
+      } catch (cause) {
+        // モデルの読み込みの失敗などでは残りのクラスタも生成できないため止めます。生成済みのラベルは残し、次は足りないクラスタだけを生成します
+        if (!mounted.current) return
+        setLabeling({ status: 'error', message: cause instanceof Error ? cause.message : String(cause) })
+        await saveLabels({ labels: generated, failures: failed })
+        return
+      }
+      if (!mounted.current) return
+      // 出力が想定の形式でないクラスタは、空のラベルにせず失敗として記録し、ほかのクラスタの生成は続けます
+      try {
+        generated = [...generated, { clusterId: cluster.id, ...parseLabelOutput(output), basisCommentIds: basis.map((comment) => comment.id) }].sort(
+          (a, b) => a.clusterId - b.clusterId,
+        )
+        setLabels(generated)
+      } catch (cause) {
+        failed.push({ clusterId: cluster.id, message: cause instanceof Error ? cause.message : String(cause) })
+      }
+    }
+    setLabeling({ status: 'idle' })
+    await saveLabels({ labels: generated, failures: failed })
   }
 
   const exportJson = () => {
@@ -220,11 +260,13 @@ function AnalysisResult({ path, comments, embeddings, deps, embeddingKey }: { pa
 function Panel({ deps, path, csvText, comments }: OpinionAnalysisPanelProps & { deps: OpinionAnalysisDeps }) {
   const { embedder, cache } = deps
   const [state, setState] = useState<AnalysisState>({ status: 'checking-cache' })
+  // キャッシュのキー（SHA-256）は、キャッシュの確認と保存の両方で使うため 1 度だけ求めます
+  const embeddingKeyPromise = useMemo(() => analysisCacheKey(csvText, embedder.modelId), [csvText, embedder.modelId])
 
   // 同じ入力の結果がキャッシュにあれば、ボタンを押さなくても表示します
   useEffect(() => {
     let cancelled = false
-    analysisCacheKey(csvText, embedder.modelId)
+    embeddingKeyPromise
       .then(async (key) => ({ key, cached: await cache.get<CachedEmbeddings>(key) }))
       .then(
         ({ key, cached }) => {
@@ -237,7 +279,7 @@ function Panel({ deps, path, csvText, comments }: OpinionAnalysisPanelProps & { 
     return () => {
       cancelled = true
     }
-  }, [csvText, embedder, cache])
+  }, [embeddingKeyPromise, cache])
 
   const run = async () => {
     setState({ status: 'running', progress: null })
@@ -247,7 +289,7 @@ function Panel({ deps, path, csvText, comments }: OpinionAnalysisPanelProps & { 
         (progress) => setState({ status: 'running', progress }),
       )
       // 時間のかかる埋め込みは終わっているため、キャッシュに保存できなくても結果は表示し、保存できなかったことを示します
-      const embeddingKey = await analysisCacheKey(csvText, embedder.modelId)
+      const embeddingKey = await embeddingKeyPromise
       let cacheError: string | null = null
       try {
         await cache.set(embeddingKey, { modelId: embedder.modelId, embeddings } satisfies CachedEmbeddings)

@@ -26,6 +26,13 @@ describe('pickBasisComments', () => {
   })
 })
 
+describe('pickBasisComments の不整合', () => {
+  it('クラスタが comments に無い意見を指している場合はエラーにする', () => {
+    const broken = { ...result, clusters: [{ id: 0, commentIds: ['存在しない意見'] }] }
+    expect(() => pickBasisComments(broken, 0, 2)).toThrow(/存在しない意見/)
+  })
+})
+
 describe('buildLabelMessages', () => {
   it('根拠の意見を並べ、見出しと説明を JSON で出力するよう指示する', () => {
     const messages = buildLabelMessages(pickBasisComments(result, 0, 3))
@@ -47,6 +54,11 @@ describe('parseLabelOutput', () => {
   it('コードブロックや前後の文章に囲まれた JSON も読む', () => {
     const text = 'まとめました。\n```json\n{"label": "公園の整備", "description": "公園を増やしてほしい。"}\n```'
     expect(parseLabelOutput(text)).toEqual({ label: '公園の整備', description: '公園を増やしてほしい。' })
+  })
+
+  it('JSON の後ろに波かっこを含む文章や 2 つ目の JSON が続いても、最初の JSON を読む', () => {
+    expect(parseLabelOutput('{"label": "給食の改善", "description": "給食の意見です。"}\n補足: {例}')).toEqual({ label: '給食の改善', description: '給食の意見です。' })
+    expect(parseLabelOutput('{"label": "A", "description": "説明 {かっこ} 入り"} {"label": "B", "description": "C"}')).toEqual({ label: 'A', description: '説明 {かっこ} 入り' })
   })
 
   it('JSON が見つからない出力は、空のラベルにせずエラーにする', () => {

@@ -29,6 +29,8 @@ export interface DownloadProgress {
 /**
  * Worker に依頼を送り、結果を待つ関数を作ります。Worker は最初の依頼のときに作り、以後は使い回します。
  *
+ * Worker が停止した（error イベントが起きた）場合は、その Worker を捨てて次の依頼で作り直します。
+ *
  * @param createWorker - Worker を作る関数
  * @returns 依頼の内容と進捗を受け取る関数を引数に、結果を返す関数
  */
@@ -59,6 +61,11 @@ export function createWorkerCaller<TPayload, TResult, TProgress>(
       }
       const handleError = (event: ErrorEvent) => {
         cleanUp()
+        // 停止した Worker には以後の依頼が届かないため、捨てて次の依頼で作り直します
+        if (worker === current) {
+          current.terminate()
+          worker = null
+        }
         reject(new Error(`Worker でエラーが起きました: ${event.message}`))
       }
       current.addEventListener('message', handleMessage)

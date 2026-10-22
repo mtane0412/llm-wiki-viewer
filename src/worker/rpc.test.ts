@@ -10,13 +10,16 @@ function createFakeWorker(respond: (request: WorkerRequest<string>) => WorkerRes
   const worker = {
     addEventListener: target.addEventListener.bind(target),
     removeEventListener: target.removeEventListener.bind(target),
+    terminate: vi.fn(),
+    /** Worker の error イベント（モジュールの読み込みの失敗・クラッシュ）を起こします。 */
+    crash: () => target.dispatchEvent(new ErrorEvent('error', { message: 'Worker が停止しました' })),
     postMessage: vi.fn((request: WorkerRequest<string>) => {
       queueMicrotask(() => {
         for (const message of respond(request)) target.dispatchEvent(new MessageEvent('message', { data: message }))
       })
     }),
   }
-  return worker as unknown as Worker
+  return worker as unknown as Worker & { crash: () => void; terminate: ReturnType<typeof vi.fn> }
 }
 
 describe('createWorkerCaller', () => {
@@ -48,6 +51,21 @@ describe('createWorkerCaller', () => {
     await expect(call('1 回目', vi.fn())).resolves.toBe('1 回目の結果')
     await expect(call('2 回目', vi.fn())).resolves.toBe('2 回目の結果')
     expect(createWorker).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('createWorkerCaller の Worker の停止', () => {
+  it('Worker が停止したら依頼を失敗にし、次の依頼では Worker を作り直す', async () => {
+    // 前提: 1 つ目の Worker は応答せずに停止し、2 つ目の Worker は正常に応答します
+    const broken = createFakeWorker(() => [])
+    const healthy = createFakeWorker((request) => [{ id: request.id, type: 'result', output: `${request.payload}の結果` }])
+    const createWorker = vi.fn().mockReturnValueOnce(broken).mockReturnValueOnce(healthy)
+    const call = createWorkerCaller<string, string, number>(createWorker)
+    const first = call('1 回目', vi.fn())
+    broken.crash()
+    await expect(first).rejects.toThrow('Worker が停止しました')
+    expect(broken.terminate).toHaveBeenCalled()
+    await expect(call('2 回目', vi.fn())).resolves.toBe('2 回目の結果')
   })
 })
 

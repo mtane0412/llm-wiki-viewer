@@ -42,6 +42,11 @@ export class LabelFormatError extends Error {
   }
 }
 
+/**
+ * プロンプト（buildLabelMessages）の版です。プロンプトを変えたら上げ、古いプロンプトで生成したラベルのキャッシュを使わないようにします。
+ */
+export const LABEL_PROMPT_VERSION = 1
+
 /** 見出しの長さの目安（文字数）です。プロンプトで指示します。 */
 const LABEL_MAX_LENGTH = 20
 /** 説明の長さの目安（文字数）です。プロンプトで指示します。 */
@@ -54,10 +59,16 @@ const DESCRIPTION_MAX_LENGTH = 100
  * @param clusterId - クラスタの番号
  * @param limit - 選ぶ件数の上限
  * @returns 根拠にする意見
+ * @throws Error - クラスタが分析結果の意見に無い id を指している場合
  */
 export function pickBasisComments(result: OpinionClusterResult, clusterId: number, limit: number): BasisComment[] {
   const bodyById = new Map(result.comments.map((comment) => [comment.id, comment.body]))
-  return (result.clusters[clusterId]?.commentIds ?? []).slice(0, limit).map((id) => ({ id, body: bodyById.get(id) ?? '' }))
+  return (result.clusters[clusterId]?.commentIds ?? []).slice(0, limit).map((id) => {
+    const body = bodyById.get(id)
+    // 分析結果の不整合を空の本文で隠すと、ラベルの品質が黙って下がるため、エラーにします
+    if (body === undefined) throw new Error(`クラスタ ${clusterId + 1} の意見「${id}」が分析結果の意見にありません。`)
+    return { id, body }
+  })
 }
 
 /**
@@ -83,6 +94,34 @@ function isFilledString(value: unknown): value is string {
 }
 
 /**
+ * 文字列の中の最初の { から、それと釣り合う } までを取り出します。文字列リテラルの中の波かっこは数えません。
+ * JSON の後ろに波かっこを含む文章や 2 つ目の JSON が続く出力でも、最初の JSON だけを取り出すために使います。
+ *
+ * @returns 取り出した部分。{ が無いか釣り合う } が無ければ null です
+ */
+function firstJsonObject(text: string): string | null {
+  const start = text.indexOf('{')
+  if (start < 0) return null
+  let depth = 0
+  let inString = false
+  for (let position = start; position < text.length; position++) {
+    const char = text[position]
+    if (inString) {
+      if (char === '\\') position++
+      else if (char === '"') inString = false
+    } else if (char === '"') {
+      inString = true
+    } else if (char === '{') {
+      depth++
+    } else if (char === '}') {
+      depth--
+      if (depth === 0) return text.slice(start, position + 1)
+    }
+  }
+  return null
+}
+
+/**
  * LLM の出力から見出しと説明を取り出します。コードブロックや前後の文章に囲まれた JSON も読みます。
  *
  * @param text - LLM の出力
@@ -90,13 +129,11 @@ function isFilledString(value: unknown): value is string {
  * @throws LabelFormatError - JSON が見つからない場合、label・description が無いか空の場合
  */
 export function parseLabelOutput(text: string): GeneratedLabel {
-  // 出力の最初の { から最後の } までを JSON とみなします
-  const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-  if (start < 0 || end < start) throw new LabelFormatError(`LLM の出力に JSON がありません: ${text}`)
+  const json = firstJsonObject(text)
+  if (json === null) throw new LabelFormatError(`LLM の出力に JSON がありません: ${text}`)
   let data: unknown
   try {
-    data = JSON.parse(text.slice(start, end + 1))
+    data = JSON.parse(json)
   } catch (cause) {
     throw new LabelFormatError(`LLM の出力を JSON として読めません（${cause instanceof Error ? cause.message : String(cause)}）: ${text}`)
   }

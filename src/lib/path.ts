@@ -13,16 +13,6 @@ export function basename(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1)
 }
 
-/** CSV ファイル（拡張子 .csv）のパスかを判定します。raw/ の CSV は開いたときに表や集計として表示します。 */
-export function isCsvPath(path: string): boolean {
-  return /\.csv$/i.test(path)
-}
-
-/** JSON ファイル（拡張子 .json）のパスかを判定します。raw/ の JSON は開いたときに意見クラスタの結果として表示します。 */
-export function isJsonPath(path: string): boolean {
-  return /\.json$/i.test(path)
-}
-
 /** パスから拡張子 .md を取り除きます。 */
 export function stripMarkdownExtension(path: string): string {
   return path.replace(/\.md$/i, '')

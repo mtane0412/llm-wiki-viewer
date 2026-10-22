@@ -1,5 +1,6 @@
 /**
- * lint の指摘（壊れたリンク・孤立ページ・sources 未記載・frontmatter エラー・index.md 未掲載）を一覧表示するコンポーネントです。
+ * lint の指摘（壊れたリンク・孤立ページ・sources 未記載・frontmatter エラー・index.md 未掲載・
+ * frontmatter の必須項目の欠け・type の値の誤り）を一覧表示するコンポーネントです。
  * 壊れたリンクは、未作成のリンク先ごとに参照数の多い順に並べた「未作成ページ（赤リンク）」としても表示します。
  *
  * LLM Wiki の Lint 操作で LLM に直させる前に、人が全体の健全性を確認するための画面です。
@@ -19,7 +20,8 @@ export interface LintViewProps {
 const SECTIONS: {
   kind: LintIssue['kind']
   title: string
-  description: string
+  /** 区画の説明です。索引の内容（スキーマの選択肢など）を含める場合は関数にします。 */
+  description: string | ((index: WikiIndex) => string)
   /** 判定の前提が欠けていて判定できない場合に、その理由を返します。判定できる場合は undefined です。 */
   unavailableReason?: (index: WikiIndex) => string | undefined
 }[] = [
@@ -33,7 +35,55 @@ const SECTIONS: {
     description: 'Wiki ルート直下の index.md の本文からリンクされていないページです（ルート直下の index・log・overview と、孤立ページを除く）。',
     unavailableReason: (index) => (index.indexPagePath === null ? 'Wiki ルート直下に index.md が見つからないため、判定していません。' : undefined),
   },
+  {
+    kind: 'missing-frontmatter-keys',
+    title: 'frontmatter の必須項目の欠け',
+    description: (index) =>
+      index.frontmatterRules.requiredKeys.ok
+        ? `CLAUDE.md の frontmatter の例にある項目（${index.frontmatterRules.requiredKeys.value.join('・')}）が無いか空のページです（目次類を除く。sources は「sources 未記載」で扱います）。`
+        : 'CLAUDE.md の frontmatter の例にある項目が無いか空のページです。',
+    unavailableReason: (index) => (index.frontmatterRules.requiredKeys.ok ? undefined : index.frontmatterRules.requiredKeys.reason),
+  },
+  {
+    kind: 'invalid-type',
+    title: 'type の値の誤り',
+    description: (index) =>
+      index.frontmatterRules.typeValues.ok
+        ? `type の値が、CLAUDE.md で定めた選択肢（${index.frontmatterRules.typeValues.value.join('・')}）に無いページです。`
+        : 'type の値が、CLAUDE.md で定めた選択肢に無いページです。',
+    unavailableReason: (index) => (index.frontmatterRules.typeValues.ok ? undefined : index.frontmatterRules.typeValues.reason),
+  },
 ]
+
+/** 指摘の詳細（リンク先・エラーの内容・欠けた項目など）を描画します。ページだけで分かる指摘では何も描画しません。 */
+function IssueDetail({ issue }: { issue: LintIssue }) {
+  switch (issue.kind) {
+    case 'broken-link':
+      return <code className="lint-target">{issue.target}</code>
+    case 'frontmatter-error':
+      return <pre className="lint-message">{issue.message}</pre>
+    case 'missing-frontmatter-keys':
+      return (
+        <>
+          {issue.keys.map((key) => (
+            <code key={key} className="lint-target">
+              {key}
+            </code>
+          ))}
+        </>
+      )
+    case 'invalid-type':
+      return <code className="lint-target">{issue.type}</code>
+    case 'orphan':
+    case 'missing-sources':
+    case 'not-in-index':
+      return null
+    default: {
+      const exhaustive: never = issue
+      return exhaustive
+    }
+  }
+}
 
 /** 指摘の種類ごとの区画です。 */
 function IssueSection({
@@ -102,7 +152,7 @@ export function LintView({ index, vaultId }: LintViewProps) {
           <IssueSection
             key={section.kind}
             title={section.title}
-            description={section.description}
+            description={typeof section.description === 'function' ? section.description(index) : section.description}
             count={issues.length}
             unavailableReason={section.unavailableReason?.(index)}
           >
@@ -111,17 +161,9 @@ export function LintView({ index, vaultId }: LintViewProps) {
                 <li key={path}>
                   {pageLink(path)}
                   <span className="muted lint-path">{path}</span>
-                  {pageIssues.map((issue, position) =>
-                    issue.kind === 'broken-link' ? (
-                      <code key={position} className="lint-target">
-                        {issue.target}
-                      </code>
-                    ) : issue.kind === 'frontmatter-error' ? (
-                      <pre key={position} className="lint-message">
-                        {issue.message}
-                      </pre>
-                    ) : null,
-                  )}
+                  {pageIssues.map((issue, position) => (
+                    <IssueDetail key={position} issue={issue} />
+                  ))}
                 </li>
               ))}
             </ul>

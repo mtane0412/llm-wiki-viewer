@@ -8,6 +8,7 @@
 import { parseFrontmatter } from './frontmatter'
 import { basename, dirname, pageNameOf, stripMarkdownExtension } from './path'
 import { createResolver, normalizeKey, type Resolver } from './resolver'
+import { parseFrontmatterRules, type FrontmatterRules } from './schemaRules'
 import { extractWikilinks, parseWikilink, type ExtractedWikilink } from './wikilink'
 
 /** 読み込んだ Markdown ファイルです。 */
@@ -60,6 +61,8 @@ export type LintIssue =
   | { kind: 'missing-sources'; page: string }
   | { kind: 'frontmatter-error'; page: string; message: string }
   | { kind: 'not-in-index'; page: string }
+  | { kind: 'missing-frontmatter-keys'; page: string; keys: string[] }
+  | { kind: 'invalid-type'; page: string; type: string }
 
 /** 未作成のページ（解決できないリンク先）と、そこへリンクしているページです。 */
 export interface RedLink {
@@ -98,6 +101,8 @@ export interface WikiIndex {
    * wiki/ を含むリポジトリのフォルダを選んだ場合だけ持ち、wiki/ フォルダ自体を選んだ場合や CLAUDE.md が無い場合は null です。
    */
   schema: MarkdownFile | null
+  /** スキーマから読み取った frontmatter の規則です。読み取れない規則は理由を持ちます（Lint 画面で示します）。 */
+  frontmatterRules: FrontmatterRules
   /** wikilink を解決する関数です。 */
   resolve: Resolver
 }
@@ -114,6 +119,37 @@ export interface WikiIndexInput {
 
 /** スキーマのファイル名（小文字）です。大文字小文字を区別しないファイルシステムがあるため、小文字にして比較します。 */
 const SCHEMA_FILE_NAME = 'claude.md'
+
+/** スキーマが無い Wiki での frontmatter の規則です。判定しない理由だけを持ちます。 */
+const RULES_WITHOUT_SCHEMA: FrontmatterRules = (() => {
+  const reason = 'スキーマ（リポジトリ直下の CLAUDE.md）が無いため、判定していません。'
+  return { requiredKeys: { ok: false, reason }, typeValues: { ok: false, reason } }
+})()
+
+/** frontmatter の値が空（無い・null・空文字）かを判定します。空の配列は値があるものとみなします。 */
+function isBlankValue(value: unknown): boolean {
+  return value === undefined || value === null || value === ''
+}
+
+/**
+ * frontmatter の規則に照らして、ページの必須項目の欠けと type の値の誤りを返します。
+ *
+ * @param page - wiki のページ（目次類と YAML を解析できないページは呼び出し元で除きます）
+ * @param rules - スキーマから読み取った規則
+ * @returns lint の指摘
+ */
+function frontmatterIssues(page: WikiPage, rules: FrontmatterRules): LintIssue[] {
+  const issues: LintIssue[] = []
+  if (rules.requiredKeys.ok) {
+    const missing = rules.requiredKeys.value.filter((key) => isBlankValue(page.frontmatter[key]))
+    if (missing.length > 0) issues.push({ kind: 'missing-frontmatter-keys', page: page.path, keys: missing })
+  }
+  // type が無いページは必須項目の欠けとしてだけ数えます
+  if (rules.typeValues.ok && page.type !== undefined && !rules.typeValues.value.includes(page.type)) {
+    issues.push({ kind: 'invalid-type', page: page.path, type: page.type })
+  }
+  return issues
+}
 
 /** 目次や記録として特別扱いするページのファイル名（小文字・拡張子なし）です。 */
 const SPECIAL_PAGE_NAMES = new Set(['index', 'log', 'overview'])
@@ -246,6 +282,10 @@ function requiresSources(page: WikiPage, wikiRoot: string): boolean {
 export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
   const wikiRoot = [...input.markdownFiles.map((file) => file.path), ...input.unloadedMarkdownPaths].some((path) => path.startsWith('wiki/')) ? 'wiki' : ''
   const issues: LintIssue[] = []
+  // Wiki ルートが wiki/ のときだけ、選択したフォルダの直下がリポジトリ直下です
+  const schema = wikiRoot ? (input.markdownFiles.find((file) => file.path.toLowerCase() === SCHEMA_FILE_NAME) ?? null) : null
+  const frontmatterRules = schema ? parseFrontmatterRules(schema.content) : RULES_WITHOUT_SCHEMA
+  const pagesWithFrontmatterError = new Set<string>()
 
   const pages: WikiPage[] = []
   for (const file of input.markdownFiles) {
@@ -253,6 +293,7 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     if (!area) continue
     const { page, frontmatterError } = toPage(file, area)
     pages.push(page)
+    if (frontmatterError) pagesWithFrontmatterError.add(file.path)
     if (frontmatterError && area === 'wiki') {
       issues.push({ kind: 'frontmatter-error', page: file.path, message: frontmatterError })
     }
@@ -313,6 +354,8 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     if (indexPagePath && !isOrphan && !isRootSpecialPage(page, wikiRoot) && !listedInIndex.has(page.path)) {
       issues.push({ kind: 'not-in-index', page: page.path })
     }
+    // YAML を解析できないページは「frontmatter エラー」としてだけ指摘します
+    if (!isSpecialPage(page.path) && !pagesWithFrontmatterError.has(page.path)) issues.push(...frontmatterIssues(page, frontmatterRules))
     if (requiresSources(page, wikiRoot) && page.sources.length === 0) {
       issues.push({ kind: 'missing-sources', page: page.path })
     }
@@ -328,8 +371,8 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     citations,
     issues,
     homePath: pickHomePath(pages, wikiRoot, indexPagePath),
-    // Wiki ルートが wiki/ のときだけ、選択したフォルダの直下がリポジトリ直下です
-    schema: wikiRoot ? (input.markdownFiles.find((file) => file.path.toLowerCase() === SCHEMA_FILE_NAME) ?? null) : null,
+    schema,
+    frontmatterRules,
     indexPagePath,
     resolve,
   }

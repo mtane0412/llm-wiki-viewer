@@ -30,6 +30,10 @@ describe('parseCsv', () => {
     ])
   })
 
+  it('空のダブルクォートだけの行は、空のセルを 1 つ持つ行として読む', () => {
+    expect(parseCsv('id\n""\n2\n')).toEqual([['id'], [''], ['2']])
+  })
+
   it('閉じられていないダブルクォートは、始まった行を示してエラーにする', () => {
     expect(() => parseCsv('id,body\n1,"閉じ忘れ\n2,次の行')).toThrow(CsvFormatError)
     expect(() => parseCsv('id,body\n1,"閉じ忘れ\n2,次の行')).toThrow(/2 行目/)

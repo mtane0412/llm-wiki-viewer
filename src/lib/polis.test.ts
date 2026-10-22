@@ -45,6 +45,19 @@ describe('parseVoteMatrix', () => {
     expect(matrix).toEqual({ participants: ['p1'], commentIds: ['c1'], votes: [[1]] })
   })
 
+  it('1.0・+1・-1.0 のような数値の表記も賛否として読む', () => {
+    const matrix = parseVoteMatrix([['participant', 'c1', 'c2', 'c3'], ['p1', '1.0', '+1', '-1.0']], ['c1', 'c2', 'c3'])
+    expect(matrix.votes).toEqual([[1, 1, -1]])
+  })
+
+  it('同じ意見の列が 2 つある場合は、列を示してエラーにする', () => {
+    expect(() => parseVoteMatrix([['participant', 'c1', 'c1'], ['p1', '1', '1']], ['c1'])).toThrow(/3 列目.*c1.*重複/)
+  })
+
+  it('同じ参加者の行が 2 つある場合は、行を示してエラーにする', () => {
+    expect(() => parseVoteMatrix([['participant', 'c1'], ['p1', '1'], ['p1', '-1']], ['c1'])).toThrow(/3 行目.*p1.*重複/)
+  })
+
   it('意見 CSV に無い列名は、列を示してエラーにする', () => {
     const rows = [['participant', 'c1', '存在しない意見'], ['p1', '1', '1']]
     expect(() => parseVoteMatrix(rows, ['c1'])).toThrow(CsvFormatError)
@@ -94,6 +107,18 @@ describe('analyzeVotes', () => {
     const first = analyzeVotes(matrix)
     expect(first.points).toHaveLength(8)
     expect(analyzeVotes(matrix)).toEqual(first)
+  })
+
+  it('各グループで 1 票しか賛成が無い意見は、合意点にしない', () => {
+    // 前提: c6 には給食派の p1 と公園派の p5 だけが賛成し、ほかの参加者は投票していません
+    const rows = twoGroupRows.map((row, index) => [...row, index === 0 ? 'c6' : row[0] === 'p1' || row[0] === 'p5' ? '1' : ''])
+    const result = analyzeVotes(parseVoteMatrix(rows, [...commentIds, 'c6']))
+    expect(result.consensus.map((item) => item.commentId)).toEqual(['c5'])
+  })
+
+  it('全員が同じ投票をしていてグループに分けられない場合はエラーにする', () => {
+    const same = parseVoteMatrix([['participant', 'c1'], ['p1', '1'], ['p2', '1'], ['p3', '1']], ['c1'])
+    expect(() => analyzeVotes(same)).toThrow(/投票の傾向に違いが無い/)
   })
 
   it('参加者が 2 人未満の場合はグループに分けられないことをエラーにする', () => {

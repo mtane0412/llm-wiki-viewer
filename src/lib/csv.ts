@@ -26,16 +26,19 @@ export function parseCsv(text: string): string[][] {
   let row: string[] = []
   let cell = ''
   let inQuotes = false
+  // 現在のセルがダブルクォートで囲まれていたかです。`""` だけの行を空行と区別するために使います
+  let cellQuoted = false
   // エラーで示す、ダブルクォートが始まった行の番号（ファイルの物理行、1 始まり）です
   let line = 1
   let quoteStartLine = 1
 
   const endRow = () => {
     row.push(cell)
-    // 空行（セルが 1 つで空のもの）は読み飛ばします
-    if (row.length > 1 || row[0] !== '') rows.push(row)
+    // 空行（セルが 1 つで空のもの）は読み飛ばします。`""` だけの行は空のセルを持つ行として残します
+    if (row.length > 1 || row[0] !== '' || cellQuoted) rows.push(row)
     row = []
     cell = ''
+    cellQuoted = false
   }
 
   for (let position = 0; position < source.length; position++) {
@@ -56,10 +59,12 @@ export function parseCsv(text: string): string[][] {
     }
     if (char === '"') {
       inQuotes = true
+      cellQuoted = true
       quoteStartLine = line
     } else if (char === ',') {
       row.push(cell)
       cell = ''
+      cellQuoted = false
     } else if (char === '\n' || char === '\r') {
       // CRLF は 1 つの改行として扱います
       if (char === '\r' && source[position + 1] === '\n') position++
@@ -70,6 +75,6 @@ export function parseCsv(text: string): string[][] {
     }
   }
   if (inQuotes) throw new CsvFormatError(`${quoteStartLine} 行目で始まったダブルクォートが閉じられていません。`)
-  if (cell !== '' || row.length > 0) endRow()
+  if (cell !== '' || row.length > 0 || cellQuoted) endRow()
   return rows
 }

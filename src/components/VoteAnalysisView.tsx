@@ -48,21 +48,19 @@ function percent(rate: number): string {
 
 /** 参加者の散布図です。グループごとに色分けします。 */
 function ScatterPlot({ analysis }: { analysis: VoteAnalysis }) {
-  const xs = analysis.points.map((point) => point.x)
-  const ys = analysis.points.map((point) => point.y)
-  // 座標の範囲を描画領域に合わせます（範囲が 0 の軸は中央に置きます）
-  const scale = (value: number, values: number[]) => {
-    const min = Math.min(...values)
-    const range = Math.max(...values) - min
-    return range === 0 ? PLOT_SIZE / 2 : PLOT_PADDING + ((value - min) / range) * (PLOT_SIZE - PLOT_PADDING * 2)
-  }
+  // 座標の範囲を描画領域に合わせます（範囲が 0 の軸は中央に置きます）。範囲は点ごとに求め直さないよう 1 度だけ求めます
+  const bounds = (values: number[]) => values.reduce((range, value) => ({ min: Math.min(range.min, value), max: Math.max(range.max, value) }), { min: Infinity, max: -Infinity })
+  const xBounds = bounds(analysis.points.map((point) => point.x))
+  const yBounds = bounds(analysis.points.map((point) => point.y))
+  const scale = (value: number, { min, max }: { min: number; max: number }) =>
+    max === min ? PLOT_SIZE / 2 : PLOT_PADDING + ((value - min) / (max - min)) * (PLOT_SIZE - PLOT_PADDING * 2)
   const summary = `${analysis.points.length} 人の参加者を、投票の傾向が近いほど近くに配置した散布図です。${analysis.groups
     .map((group) => `${groupName(group.id)}は ${group.participants.length} 人`)
     .join('、')}です。`
   return (
     <svg className="vote-scatter" viewBox={`0 0 ${PLOT_SIZE} ${PLOT_SIZE}`} role="img" aria-label={summary}>
       {analysis.points.map((point) => (
-        <circle key={point.participant} cx={scale(point.x, xs)} cy={scale(point.y, ys)} r={POINT_RADIUS} fill={groupColor(point.group)}>
+        <circle key={point.participant} cx={scale(point.x, xBounds)} cy={scale(point.y, yBounds)} r={POINT_RADIUS} fill={groupColor(point.group)}>
           <title>{`${point.participant}（${groupName(point.group)}）`}</title>
         </circle>
       ))}

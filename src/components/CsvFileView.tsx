@@ -26,7 +26,18 @@ export interface CsvFileViewProps {
 type LoadState =
   | { status: 'loading'; path: string }
   | { status: 'error'; path: string; message: string }
-  | { status: 'ready'; path: string; rows: string[][]; commentTables: CommentTable[] }
+  | { status: 'ready'; path: string; rows: string[][]; siblings: SiblingTables }
+
+/** 投票 CSV と同じフォルダにある CSV の読み込み結果です。 */
+interface SiblingTables {
+  /** 意見 CSV です（パスの順）。 */
+  commentTables: CommentTable[]
+  /** 形式の誤りなどで読めなかった CSV と、その理由です。 */
+  unreadable: { path: string; message: string }[]
+}
+
+/** 投票 CSV でない CSV の、同じフォルダの CSV の読み込み結果です（読み込みません）。 */
+const NO_SIBLINGS: SiblingTables = { commentTables: [], unreadable: [] }
 
 /** 形式の分からない CSV で表示する行数の上限です（大きなファイルで画面が重くならないようにします）。 */
 const MAX_TABLE_ROWS = 200
@@ -42,13 +53,30 @@ async function readCsv(path: string, readText: (path: string) => Promise<string>
   }
 }
 
-/** 投票 CSV と同じフォルダにある意見 CSV を読み込みます（パスの順）。 */
-async function readSiblingCommentTables(path: string, index: WikiIndex, readText: (path: string) => Promise<string>): Promise<CommentTable[]> {
+/**
+ * 投票 CSV と同じフォルダにある CSV を読み込み、意見 CSV を選び出します。
+ * 関係の無い CSV の誤りで集計全体が止まらないよう、読めなかった CSV は理由とともに別に返し、画面で示します。
+ */
+async function readSiblingTables(path: string, index: WikiIndex, readText: (path: string) => Promise<string>): Promise<SiblingTables> {
   const siblings = index.assetPaths
     .filter((other) => other !== path && isCsvPath(other) && dirname(other) === dirname(path))
     .sort((a, b) => a.localeCompare(b))
-  const tables = await Promise.all(siblings.map(async (sibling) => ({ path: sibling, rows: await readCsv(sibling, readText) })))
-  return tables.filter((table) => isCommentTable(table.rows))
+  const commentTables: CommentTable[] = []
+  const unreadable: SiblingTables['unreadable'] = []
+  const results = await Promise.all(
+    siblings.map(async (sibling): Promise<{ ok: true; path: string; rows: string[][] } | { ok: false; path: string; message: string }> => {
+      try {
+        return { ok: true, path: sibling, rows: await readCsv(sibling, readText) }
+      } catch (cause) {
+        return { ok: false, path: sibling, message: cause instanceof Error ? cause.message : String(cause) }
+      }
+    }),
+  )
+  for (const result of results) {
+    if (!result.ok) unreadable.push({ path: result.path, message: result.message })
+    else if (isCommentTable(result.rows)) commentTables.push({ path: result.path, rows: result.rows })
+  }
+  return { commentTables, unreadable }
 }
 
 /** CSV の行を表として描画します。1 行目は見出し行です。 */
@@ -93,11 +121,11 @@ export function CsvFileView({ path, index, readText }: CsvFileViewProps) {
     ;(async () => {
       const rows = await readCsv(path, readText)
       // 投票 CSV だけが、意見の本文を引くために同じフォルダの意見 CSV を必要とします
-      const commentTables = isVoteTable(rows) ? await readSiblingCommentTables(path, index, readText) : []
-      return { rows, commentTables }
+      const siblings = isVoteTable(rows) ? await readSiblingTables(path, index, readText) : NO_SIBLINGS
+      return { rows, siblings }
     })().then(
-      ({ rows, commentTables }) => {
-        if (!cancelled) setState({ status: 'ready', path, rows, commentTables })
+      ({ rows, siblings }) => {
+        if (!cancelled) setState({ status: 'ready', path, rows, siblings })
       },
       (cause: unknown) => {
         if (!cancelled) setState({ status: 'error', path, message: cause instanceof Error ? cause.message : String(cause) })
@@ -118,7 +146,12 @@ export function CsvFileView({ path, index, readText }: CsvFileViewProps) {
           {`CSV を読み込めませんでした: ${state.message}`}
         </p>
       ) : isVoteTable(state.rows) ? (
-        <VoteAnalysisView key={state.path} voteRows={state.rows} commentTables={state.commentTables} />
+        <>
+          {state.siblings.unreadable.map((item) => (
+            <p key={item.path} className="lint-unavailable">{`同じフォルダの CSV を読めなかったため、意見 CSV の候補から除きました: ${item.message}`}</p>
+          ))}
+          <VoteAnalysisView key={state.path} voteRows={state.rows} commentTables={state.siblings.commentTables} />
+        </>
       ) : (
         <>
           {isCommentTable(state.rows) && <p className="muted">{`意見 CSV（${state.rows.length - 1} 件の意見）です。`}</p>}

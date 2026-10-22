@@ -7,7 +7,8 @@
  *
  * 投票 CSV の形式（Polis のエクスポートの participant-votes.csv と同じ）:
  * - 1 列目の見出しは `participant` で、値は参加者の id
- * - 残りの列の見出しは意見の `comment-id`。値は `1`（賛成）・`-1`（反対）・`0` または空（未投票・パス）
+ * - 残りの列の見出しは意見の `comment-id`。値は `1`（賛成）・`-1`（反対）・`0` または空（未投票・パス）。
+ *   表計算ソフトや pandas が書き出す `1.0`・`+1`・`-1.0` のような数値の表記も同じ値として読みます
  * - Polis のメタデータ列（xid・group-id・n-comments・n-votes・n-agree・n-disagree）は読み飛ばします
  */
 import { chooseClusters, projectToPlane } from './clustering'
@@ -19,13 +20,8 @@ const PARTICIPANT_COLUMN = 'participant'
 /** Polis のエクスポートにある、意見ではないメタデータ列です。 */
 const POLIS_METADATA_COLUMNS = new Set(['xid', 'group-id', 'n-comments', 'n-votes', 'n-agree', 'n-disagree'])
 
-/** セルの値と賛否の対応です。空は未投票として 0 にします。 */
-const VOTE_VALUES = new Map<string, number>([
-  ['1', 1],
-  ['-1', -1],
-  ['0', 0],
-  ['', 0],
-])
+/** 賛否として受け付ける値です。 */
+const VOTE_VALUES = new Set([1, -1, 0])
 
 /** 意見グループの数の上限です。Polis と同じく 2〜5 グループの中から選びます。 */
 const MAX_GROUPS = 5
@@ -33,6 +29,11 @@ const MAX_GROUPS = 5
 const SEED = 1
 /** 合意点とみなす、すべてのグループでの賛成率の下限です。 */
 const CONSENSUS_THRESHOLD = 0.6
+/**
+ * 合意点・代表的な意見とみなすために、グループ内で必要な賛成・反対の票数の下限です。
+ * 1 票だけでも平滑化した割合が 67% になるため、票の少ない意見を合意点や代表的な意見として示さないようにします。
+ */
+const MIN_GROUP_VOTES = 2
 /** グループごとに表示する代表的な意見の件数の上限です。 */
 const MAX_REPRESENTATIVE = 5
 
@@ -42,6 +43,13 @@ export interface VoteMatrix {
   commentIds: string[]
   /** votes[参加者][意見] が 1（賛成）・-1（反対）・0（未投票・パス）です。 */
   votes: number[][]
+}
+
+/** セルの値を賛否（1・-1・0）にします。空は未投票として 0 にします。受け付けない値は undefined です。 */
+function parseVote(cell: string): number | undefined {
+  if (cell === '') return 0
+  const value = Number(cell)
+  return VOTE_VALUES.has(value) ? value : undefined
 }
 
 /** CSV が投票 CSV（見出し行の 1 列目が participant）かを判定します。 */
@@ -62,16 +70,27 @@ export function parseVoteMatrix(rows: string[][], knownCommentIds: string[]): Vo
   const known = new Set(knownCommentIds)
   // 意見の列の位置です（1 列目の参加者とメタデータ列を除きます）
   const columns: number[] = []
+  const seenComments = new Set<string>()
   header.forEach((name, column) => {
-    if (column === 0 || POLIS_METADATA_COLUMNS.has(name.trim())) return
-    if (!known.has(name.trim())) throw new CsvFormatError(`${column + 1} 列目の意見「${name}」が意見 CSV にありません。`)
+    const commentId = name.trim()
+    if (column === 0 || POLIS_METADATA_COLUMNS.has(commentId)) return
+    if (!known.has(commentId)) throw new CsvFormatError(`${column + 1} 列目の意見「${name}」が意見 CSV にありません。`)
+    if (seenComments.has(commentId)) throw new CsvFormatError(`${column + 1} 列目の意見「${name}」の列が重複しています。`)
+    seenComments.add(commentId)
     columns.push(column)
+  })
+
+  const seenParticipants = new Set<string>()
+  records.forEach((record, position) => {
+    const participant = record[0] ?? ''
+    if (seenParticipants.has(participant)) throw new CsvFormatError(`${position + 2} 行目の参加者「${participant}」の行が重複しています。`)
+    seenParticipants.add(participant)
   })
 
   const votes = records.map((record, position) =>
     columns.map((column) => {
       const cell = (record[column] ?? '').trim()
-      const vote = VOTE_VALUES.get(cell)
+      const vote = parseVote(cell)
       if (vote === undefined) {
         throw new CsvFormatError(`${position + 2} 行目・${column + 1} 列目（意見「${header[column]}」）の値「${cell}」は 1・-1・0・空のいずれでもありません。`)
       }
@@ -143,6 +162,11 @@ function smoothedRate(count: number, counts: VoteCounts): number {
   return (count + 1) / (counts.agree + counts.disagree + 2)
 }
 
+/** グループ内の賛成・反対の票数が、割合を示せるだけあるかを判定します。 */
+function hasEnoughVotes(counts: VoteCounts): boolean {
+  return counts.agree + counts.disagree >= MIN_GROUP_VOTES
+}
+
 /** グループの代表的な意見を求めます。グループ内の割合が過半で、グループ外より高い向きの意見を、比の大きい順に並べます。 */
 function representativeComments(matrix: VoteMatrix, inside: VoteCounts[], outside: VoteCounts[]): RepresentativeComment[] {
   return matrix.commentIds
@@ -155,7 +179,7 @@ function representativeComments(matrix: VoteMatrix, inside: VoteCounts[], outsid
       }))
       return candidates.reduce((best, candidate) => (candidate.groupRate / candidate.otherRate > best.groupRate / best.otherRate ? candidate : best))
     })
-    .filter((item) => item.groupRate > 0.5 && item.groupRate > item.otherRate)
+    .filter((item, comment) => hasEnoughVotes(inside[comment]) && item.groupRate > 0.5 && item.groupRate > item.otherRate)
     .sort((a, b) => b.groupRate / b.otherRate - a.groupRate / a.otherRate)
     .slice(0, MAX_REPRESENTATIVE)
 }
@@ -172,10 +196,15 @@ function representativeComments(matrix: VoteMatrix, inside: VoteCounts[], outsid
 export function analyzeVotes(matrix: VoteMatrix): VoteAnalysis {
   if (matrix.participants.length < 2) throw new Error('意見グループに分けるには、参加者が 2 人以上必要です。')
   const coordinates = projectToPlane(matrix.votes)
+  if (coordinates.every(([x, y]) => x === coordinates[0][0] && y === coordinates[0][1])) {
+    throw new Error('すべての参加者の投票の傾向に違いが無いため、意見グループに分けられません。')
+  }
   const labels = chooseClusters(coordinates, { maxClusters: MAX_GROUPS, seed: SEED })
 
   // グループの番号を、人数の多い順（同数なら先に現れた順）に振り直します
-  const clusterIds = [...new Set(labels)].sort((a, b) => labels.filter((label) => label === b).length - labels.filter((label) => label === a).length)
+  const sizes = new Map<number, number>()
+  for (const label of labels) sizes.set(label, (sizes.get(label) ?? 0) + 1)
+  const clusterIds = [...sizes.keys()].sort((a, b) => (sizes.get(b) ?? 0) - (sizes.get(a) ?? 0))
   const groupOf = labels.map((label) => clusterIds.indexOf(label))
   const membersOf = (group: number) => groupOf.map((value, index) => (value === group ? index : -1)).filter((index) => index >= 0)
 
@@ -191,7 +220,7 @@ export function analyzeVotes(matrix: VoteMatrix): VoteAnalysis {
 
   const consensus = matrix.commentIds
     .map((commentId, comment) => ({ commentId, agreeRates: groupCounts.map((counts) => smoothedRate(counts[comment].agree, counts[comment])) }))
-    .filter((item) => item.agreeRates.every((rate) => rate >= CONSENSUS_THRESHOLD))
+    .filter((item, comment) => groupCounts.every((counts) => hasEnoughVotes(counts[comment])) && item.agreeRates.every((rate) => rate >= CONSENSUS_THRESHOLD))
     .sort((a, b) => Math.min(...b.agreeRates) - Math.min(...a.agreeRates))
 
   return {

@@ -109,7 +109,7 @@ export function kMeans(points: number[][], clusterCount: number, seed: number): 
   // k-means++: 既存の中心から遠い点ほど選ばれやすくして、初期の中心を選びます
   const centers: number[][] = [points[Math.floor(random() * points.length)]]
   while (centers.length < clusterCount) {
-    const weights = points.map((point) => Math.min(...centers.map((center) => squaredDistance(point, center))))
+    const weights = points.map((point) => centers.reduce((nearest, center) => Math.min(nearest, squaredDistance(point, center)), Infinity))
     const total = weights.reduce((sum, weight) => sum + weight, 0)
     let threshold = random() * total
     let chosen = weights.findIndex((weight) => (threshold -= weight) < 0)
@@ -138,23 +138,32 @@ export function kMeans(points: number[][], clusterCount: number, seed: number): 
   return labels
 }
 
-/** クラスタ分けのシルエット係数（-1 から 1。高いほど、クラスタ内が近くクラスタ間が遠い）の平均を求めます。 */
+/**
+ * クラスタ分けのシルエット係数（-1 から 1。高いほど、クラスタ内が近くクラスタ間が遠い）の平均を求めます。
+ * 参加者が数千人でも使えるように距離の行列は作らず、点ごとにクラスタ別の距離の合計だけを持ちます（時間は点の数の 2 乗、追加のメモリはクラスタ数に比例）。
+ */
 function silhouette(points: number[][], labels: number[]): number {
-  const distances = points.map((point) => points.map((other) => Math.sqrt(squaredDistance(point, other))))
-  const clusterIds = [...new Set(labels)]
-  const scores = points.map((_, index) => {
-    const meanTo = (cluster: number) => {
-      const members = labels.map((label, other) => (label === cluster && other !== index ? other : -1)).filter((other) => other >= 0)
-      return members.length === 0 ? null : members.reduce((sum, other) => sum + distances[index][other], 0) / members.length
-    }
-    const own = meanTo(labels[index])
+  const clusterCount = Math.max(...labels) + 1
+  const sizes = new Array<number>(clusterCount).fill(0)
+  for (const label of labels) sizes[label]++
+  let total = 0
+  points.forEach((point, index) => {
+    const sums = new Array<number>(clusterCount).fill(0)
+    points.forEach((other, otherIndex) => {
+      if (otherIndex !== index) sums[labels[otherIndex]] += Math.sqrt(squaredDistance(point, other))
+    })
+    const ownSize = sizes[labels[index]] - 1
     // 1 点だけのクラスタの点は 0 とします
-    if (own === null) return 0
-    const nearest = Math.min(...clusterIds.filter((cluster) => cluster !== labels[index]).map((cluster) => meanTo(cluster) ?? Infinity))
+    if (ownSize === 0) return
+    const own = sums[labels[index]] / ownSize
+    let nearest = Infinity
+    sums.forEach((sum, cluster) => {
+      if (cluster !== labels[index] && sizes[cluster] > 0) nearest = Math.min(nearest, sum / sizes[cluster])
+    })
     const denominator = Math.max(own, nearest)
-    return denominator === 0 ? 0 : (nearest - own) / denominator
+    if (denominator > 0 && Number.isFinite(nearest)) total += (nearest - own) / denominator
   })
-  return scores.reduce((sum, score) => sum + score, 0) / scores.length
+  return total / points.length
 }
 
 /** chooseClusters の設定です。 */

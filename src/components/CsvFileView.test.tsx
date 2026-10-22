@@ -77,6 +77,13 @@ describe('CsvFileView', () => {
     expect(await screen.findByText('図書館を広くしてほしい')).toBeInTheDocument()
   })
 
+  it('同じフォルダに読めない CSV があっても、意見 CSV で集計し、読めなかった CSV を示す', async () => {
+    const readText = fakeReadText({ 'raw/votes.csv': votesCsv, 'raw/comments.csv': commentsCsv, 'raw/broken.csv': 'id,body\n1,"閉じ忘れ' })
+    render(<CsvFileView path="raw/votes.csv" index={indexWith(['raw/votes.csv', 'raw/comments.csv', 'raw/broken.csv'])} readText={readText} />)
+    expect(await screen.findByRole('region', { name: /合意点/ })).toBeInTheDocument()
+    expect(screen.getByText(/raw\/broken\.csv/)).toHaveTextContent('2 行目')
+  })
+
   it('意見 CSV では、意見の一覧を表示する', async () => {
     const readText = fakeReadText({ 'raw/comments.csv': commentsCsv })
     render(<CsvFileView path="raw/comments.csv" index={indexWith(['raw/comments.csv'])} readText={readText} />)

@@ -4,7 +4,7 @@
  * 投票の集計（参加者）と意見クラスタ（意見）で使います。点の座標は描画領域に収まるように拡大・縮小し、
  * 図の内容は aria-label の要約で、各点の名前は title で示します。
  * 点に caption がある場合は、点の横に文字で書きます（参加者の少ない投票の集計で、誰がどこにいるかを見せるために使います）。
- * 同じ位置に重なる点の caption は、重ねて書くと読めないため、「、」でつないで 1 か所にまとめて書きます。
+ * 同じ位置に重なる点の caption は、重ねて書くと読めないため、1 か所に 1 つ 1 行で積んで書きます（1 行につなぐと図の幅からはみ出すためです）。
  */
 import { groupColor } from './groupColor'
 
@@ -41,6 +41,8 @@ const POINT_RADIUS = 5
 const CAPTION_GAP = 7
 /** 点の横に書く文字の高さの調整（文字の中央を点の高さに揃える量）です。 */
 const CAPTION_BASELINE_OFFSET = 3
+/** 同じ位置に積んで書く caption の行の間隔です。 */
+const CAPTION_LINE_HEIGHT = 11
 /** 強調していないグループの点の不透明度です。 */
 const DIMMED_OPACITY = 0.2
 
@@ -66,11 +68,11 @@ export function ScatterPlot({ points, summary, highlightedGroup = null }: Scatte
     if (entry) entry.captions.push(point.caption)
     else captionsByPosition.set(position, { firstKey: point.key, captions: [point.caption] })
   }
-  const captionOf = new Map([...captionsByPosition.values()].map((entry) => [entry.firstKey, entry.captions.join('、')]))
+  const captionsOf = new Map([...captionsByPosition.values()].map((entry) => [entry.firstKey, entry.captions]))
   return (
     <svg className="vote-scatter" viewBox={`0 0 ${PLOT_SIZE} ${PLOT_SIZE}`} role="img" aria-label={summary}>
       {placed.map(({ point, cx, cy }) => {
-        const caption = captionOf.get(point.key)
+        const captions = captionsOf.get(point.key)
         const opacity = highlightedGroup === null || highlightedGroup === point.group ? 1 : DIMMED_OPACITY
         // 右半分の点は、文字がはみ出さないように点の左側に書きます
         const onRightHalf = cx > PLOT_SIZE / 2
@@ -79,14 +81,18 @@ export function ScatterPlot({ points, summary, highlightedGroup = null }: Scatte
             <circle cx={cx} cy={cy} r={POINT_RADIUS} fill={groupColor(point.group)}>
               <title>{point.label}</title>
             </circle>
-            {caption !== undefined && (
-              <text
-                className="scatter-caption"
-                x={onRightHalf ? cx - CAPTION_GAP : cx + CAPTION_GAP}
-                y={cy + CAPTION_BASELINE_OFFSET}
-                textAnchor={onRightHalf ? 'end' : 'start'}
-              >
-                {caption}
+            {captions !== undefined && (
+              <text className="scatter-caption" textAnchor={onRightHalf ? 'end' : 'start'}>
+                {captions.map((caption, line) => (
+                  // 積んだ行の全体の中央が点の高さに来るように、1 行目を上にずらします
+                  <tspan
+                    key={line}
+                    x={onRightHalf ? cx - CAPTION_GAP : cx + CAPTION_GAP}
+                    y={cy + CAPTION_BASELINE_OFFSET + (line - (captions.length - 1) / 2) * CAPTION_LINE_HEIGHT}
+                  >
+                    {caption}
+                  </tspan>
+                ))}
               </text>
             )}
           </g>

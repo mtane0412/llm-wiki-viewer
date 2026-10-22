@@ -84,10 +84,13 @@ describe('CsvFileView', () => {
     render(<CsvFileView path="raw/survey/votes.csv" index={indexWith(['raw/survey/votes.csv', 'raw/survey/comments.csv'])} readText={readText} />)
 
     const plot = await screen.findByRole('img', { name: /8 人の参加者/ })
-    // 投票がまったく同じ参加者は同じ位置に重なるため、名前を重ねて書かず、1 か所にまとめて書きます
-    expect(within(plot).getByText('給食係の保護者1、給食係の保護者2、給食係の保護者3、給食係の保護者4', { selector: 'text' })).toBeInTheDocument()
-    expect(within(plot).getByText('公園愛好会の会員1、公園愛好会の会員2、公園愛好会の会員3、公園愛好会の会員4', { selector: 'text' })).toBeInTheDocument()
-    expect(plot.querySelectorAll('text')).toHaveLength(2)
+    // 投票がまったく同じ参加者は同じ位置に重なるため、名前を重ねて書かず、1 か所に 1 人 1 行で積んで書きます
+    // （1 行につなぐと、図の幅からはみ出して読めなくなるためです）
+    const captions = [...plot.querySelectorAll('text')]
+    expect(captions).toHaveLength(2)
+    const lines = captions.map((caption) => [...caption.querySelectorAll('tspan')].map((line) => line.textContent))
+    expect(lines).toContainEqual(['給食係の保護者1', '給食係の保護者2', '給食係の保護者3', '給食係の保護者4'])
+    expect(lines).toContainEqual(['公園愛好会の会員1', '公園愛好会の会員2', '公園愛好会の会員3', '公園愛好会の会員4'])
   })
 
   it('参加者が多い投票 CSV では、名前が重なって読めなくなるため、散布図に名前を書かない', async () => {

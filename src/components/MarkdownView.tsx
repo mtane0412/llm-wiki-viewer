@@ -5,10 +5,12 @@
  * - 通常の Markdown リンクで書いた相対パスの .md もページへのリンクにします
  * - 画像はフォルダ内のファイルを読み込み、Blob URL で表示します
  * - 見出しには見出しの文字列を id として付け、`[[page#見出し]]` で移動できるようにします
+ * - Obsidian 形式の callout（`> [!warning] 矛盾`）を種類つきの枠として描画します（callout.ts）
  */
 import { useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 import Markdown, { type Components, type Options } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { remarkCallout } from '../lib/callout'
 import { dirname, joinPath } from '../lib/path'
 import { createWikilinkOptions, EMBED_CLASS, remarkWikilink } from '../lib/remarkWikilink'
 import { formatRoute } from '../lib/route'
@@ -91,7 +93,7 @@ function heading(Tag: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6') {
 /** Wiki のページ本文を描画します。 */
 export function MarkdownView({ markdown, index, pagePath, vaultId, readBlob }: MarkdownViewProps) {
   const remarkPlugins = useMemo<NonNullable<Options['remarkPlugins']>>(
-    () => [remarkGfm, [remarkWikilink, createWikilinkOptions(index, pagePath, vaultId)]],
+    () => [remarkGfm, remarkCallout, [remarkWikilink, createWikilinkOptions(index, pagePath, vaultId)]],
     [index, pagePath, vaultId],
   )
 

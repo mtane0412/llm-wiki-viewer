@@ -12,6 +12,12 @@ const index = buildWikiIndex({
   assetPaths: ['raw/assets/diagram.png'],
 })
 
+/** テスト対象を描画し、描画先の要素を返すヘルパーです（callout の枠など、ロールの無い要素を確かめるために使います）。 */
+function renderMarkdownWithContainer(markdown: string) {
+  const readBlob = vi.fn(async () => new Blob(['PNG'], { type: 'image/png' }))
+  return render(<MarkdownView markdown={markdown} index={index} pagePath="wiki/index.md" vaultId="v1" readBlob={readBlob} />)
+}
+
 /** テスト対象を描画するヘルパーです。 */
 function renderMarkdown(markdown: string) {
   const readBlob = vi.fn(async () => new Blob(['PNG'], { type: 'image/png' }))
@@ -83,5 +89,35 @@ describe('MarkdownView', () => {
   it('見出しに見出しの文字列を id として付ける', () => {
     renderMarkdown('## 承認の仕組み')
     expect(screen.getByRole('heading', { name: '承認の仕組み' })).toHaveAttribute('id', '承認の仕組み')
+  })
+
+  it('callout を種類つきの枠として描画し、タイトルと本文（wikilink を含む）を分ける', () => {
+    const { container } = renderMarkdownWithContainer('> [!warning] 矛盾\n> [[concepts/tool-use]] では X とされている。')
+    const callout = container.querySelector('[data-callout="warning"]')
+    expect(callout).toHaveClass('callout', 'callout-warning')
+    expect(callout?.querySelector('.callout-title')).toHaveTextContent('矛盾')
+    const content = callout?.querySelector('.callout-content')
+    expect(content).toHaveTextContent('Tool use では X とされている。')
+    expect(screen.getByRole('link', { name: 'Tool use' })).toHaveAttribute('href', '#/v1/page/wiki/concepts/tool-use.md')
+  })
+
+  it('別名の種類は正規の種類の見た目にし、タイトルが無ければ種類の名前を表示する', () => {
+    const { container } = renderMarkdownWithContainer('> [!FAQ]\n> 推測による記述。')
+    const callout = container.querySelector('.callout')
+    expect(callout).toHaveClass('callout-question')
+    expect(callout?.querySelector('.callout-title')).toHaveTextContent('Faq')
+  })
+
+  it('未知の種類の callout は既定の見た目で描画する', () => {
+    const { container } = renderMarkdownWithContainer('> [!仮説] 検証待ち\n> 本文')
+    const callout = container.querySelector('[data-callout="仮説"]')
+    expect(callout).toHaveClass('callout', 'callout-default')
+    expect(callout?.querySelector('.callout-title')).toHaveTextContent('検証待ち')
+  })
+
+  it('callout の記法ではない引用はそのまま引用として描画する', () => {
+    const { container } = renderMarkdownWithContainer('> ふつうの引用')
+    expect(container.querySelector('blockquote')).toHaveTextContent('ふつうの引用')
+    expect(container.querySelector('.callout')).toBeNull()
   })
 })

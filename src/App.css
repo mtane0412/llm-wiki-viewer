@@ -207,12 +207,13 @@
 
 .view-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
   padding: 0.25rem 1rem 0.5rem;
 }
 
 .view-tabs a {
-  flex: 1;
+  flex: 1 0 auto;
   padding: 0.3em 0;
   border-radius: 6px;
   color: var(--muted);
@@ -498,6 +499,84 @@ a.badge {
   padding: 0.25rem 1rem;
   border-left: 3px solid var(--border);
   color: var(--muted);
+}
+
+/* ---------- callout ---------- */
+/* 種類ごとの色を --callout-color で与え、枠線・背景・タイトルの色をそこから作ります */
+.callout {
+  --callout-color: var(--muted);
+  --callout-icon: '✎';
+  margin: 1rem 0;
+  padding: 0.6rem 0.9rem;
+  border-left: 4px solid var(--callout-color);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--callout-color) 9%, transparent);
+}
+
+.callout-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  color: var(--callout-color);
+  font-weight: 600;
+}
+
+.callout-title::before {
+  content: var(--callout-icon);
+  flex: none;
+}
+
+.callout-content > :first-child {
+  margin-top: 0.35rem;
+}
+
+.callout-content > :last-child {
+  margin-bottom: 0;
+}
+
+.callout-note,
+.callout-info,
+.callout-todo {
+  --callout-color: #3b82f6;
+  --callout-icon: 'ℹ';
+}
+
+.callout-abstract,
+.callout-tip {
+  --callout-color: #0d9488;
+  --callout-icon: '✦';
+}
+
+.callout-success {
+  --callout-color: #16a34a;
+  --callout-icon: '✓';
+}
+
+.callout-question {
+  --callout-color: #ca8a04;
+  --callout-icon: '?';
+}
+
+.callout-warning {
+  --callout-color: #ea580c;
+  --callout-icon: '⚠';
+}
+
+.callout-failure,
+.callout-danger,
+.callout-bug {
+  --callout-color: #dc2626;
+  --callout-icon: '✕';
+}
+
+.callout-example {
+  --callout-color: #7c3aed;
+  --callout-icon: '☰';
+}
+
+.callout-quote {
+  --callout-color: var(--muted);
+  --callout-icon: '❝';
 }
 
 .markdown code {
@@ -797,6 +876,16 @@ a.badge {
 
 .lint-unavailable {
   color: var(--danger);
+}
+
+.callout-mention-title {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.callout-mention-text {
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
 }
 
 .lint-ok {

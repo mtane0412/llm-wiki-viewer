@@ -55,17 +55,19 @@ describe('FileTree', () => {
 })
 
 describe('FileTree の raw/ の CSV', () => {
-  it('raw/ の CSV ファイルを、開けるファイルとして一覧に載せる', async () => {
+  it('raw/ の CSV・JSON ファイルを、開けるファイルとして一覧に載せる', async () => {
     const withCsv = buildWikiIndex({
       markdownFiles: [{ path: 'wiki/index.md', content: '# 目次' }],
       unloadedMarkdownPaths: [],
-      assetPaths: ['raw/survey/votes.csv', 'raw/survey/photo.png'],
+      assetPaths: ['raw/survey/votes.csv', 'raw/survey/clusters.json', 'raw/survey/photo.png'],
     })
     const user = userEvent.setup()
     render(<FileTree index={withCsv} vaultId="v1" currentPath="wiki/index.md" />)
     await user.click(screen.getByText('raw（元資料）'))
     await user.click(await screen.findByText('survey'))
     expect(await screen.findByRole('link', { name: 'votes.csv' })).toHaveAttribute('href', '#/v1/page/raw/survey/votes.csv')
+    // 意見クラスタの書き出した結果（JSON）も開けるファイルとして載せます
+    expect(screen.getByRole('link', { name: 'clusters.json' })).toHaveAttribute('href', '#/v1/page/raw/survey/clusters.json')
     // 前提: 開く画面の無い画像などは一覧に載せません
     expect(screen.queryByRole('link', { name: 'photo.png' })).toBeNull()
   })

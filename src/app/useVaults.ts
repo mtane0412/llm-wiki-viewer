@@ -12,6 +12,7 @@ import { createFsAccessSource } from '../source/fsAccessSource'
 import { createVaultLoader, type VaultLoader } from '../source/loadVault'
 import type { SeenStore } from '../source/seenStore'
 import { ensureReadPermission, type VaultRegistry } from '../source/vaultRegistry'
+import type { OpinionAnalysisDeps } from './opinionAnalysis'
 import type { WikiSource } from '../source/WikiSource'
 
 /** アプリが外部から受け取る依存です。テストでは偽物に差し替えます。 */
@@ -24,6 +25,8 @@ export interface AppDeps {
   pickDirectory: (() => Promise<FileSystemDirectoryHandle>) | null
   /** ファイルの変更を調べる間隔（ミリ秒）です。 */
   pollIntervalMs: number
+  /** 意見の分析（意見クラスタ）に使う埋め込みモデルとキャッシュです。null の場合、意見 CSV の分析ボタンを表示しません。 */
+  opinionAnalysis: OpinionAnalysisDeps | null
 }
 
 /** Wiki の読み込み状態です。 */

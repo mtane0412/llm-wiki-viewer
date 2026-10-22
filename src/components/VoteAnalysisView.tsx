@@ -7,6 +7,8 @@
 import { useId, useMemo, useState, type ReactNode } from 'react'
 import { parseCommentTable, type Comment } from '../lib/opinions'
 import { analyzeVotes, parseVoteMatrix, type VoteAnalysis } from '../lib/polis'
+import { groupColor } from './groupColor'
+import { ScatterPlot } from './ScatterPlot'
 
 /** 意見 CSV のパスと、解析した行です。 */
 export interface CommentTable {
@@ -22,23 +24,9 @@ export interface VoteAnalysisViewProps {
   commentTables: CommentTable[]
 }
 
-/** グループの色に使う CSS 変数の数です（index.css の --graph-1〜8）。 */
-const PALETTE_SIZE = 8
-/** 散布図の描画領域の大きさ（viewBox の幅と高さ）です。 */
-const PLOT_SIZE = 320
-/** 散布図の余白です。 */
-const PLOT_PADDING = 16
-/** 散布図の点の半径です。 */
-const POINT_RADIUS = 5
-
 /** グループの番号から、表示名（グループ A・B…）を作ります。 */
 function groupName(id: number): string {
   return `グループ ${String.fromCharCode('A'.charCodeAt(0) + id)}`
-}
-
-/** グループの色の CSS 変数です。 */
-function groupColor(id: number): string {
-  return `var(--graph-${(id % PALETTE_SIZE) + 1})`
 }
 
 /** 割合を百分率の文字列にします。 */
@@ -47,25 +35,12 @@ function percent(rate: number): string {
 }
 
 /** 参加者の散布図です。グループごとに色分けします。 */
-function ScatterPlot({ analysis }: { analysis: VoteAnalysis }) {
-  // 座標の範囲を描画領域に合わせます（範囲が 0 の軸は中央に置きます）。範囲は点ごとに求め直さないよう 1 度だけ求めます
-  const bounds = (values: number[]) => values.reduce((range, value) => ({ min: Math.min(range.min, value), max: Math.max(range.max, value) }), { min: Infinity, max: -Infinity })
-  const xBounds = bounds(analysis.points.map((point) => point.x))
-  const yBounds = bounds(analysis.points.map((point) => point.y))
-  const scale = (value: number, { min, max }: { min: number; max: number }) =>
-    max === min ? PLOT_SIZE / 2 : PLOT_PADDING + ((value - min) / (max - min)) * (PLOT_SIZE - PLOT_PADDING * 2)
+function ParticipantScatterPlot({ analysis }: { analysis: VoteAnalysis }) {
   const summary = `${analysis.points.length} 人の参加者を、投票の傾向が近いほど近くに配置した散布図です。${analysis.groups
     .map((group) => `${groupName(group.id)}は ${group.participants.length} 人`)
     .join('、')}です。`
-  return (
-    <svg className="vote-scatter" viewBox={`0 0 ${PLOT_SIZE} ${PLOT_SIZE}`} role="img" aria-label={summary}>
-      {analysis.points.map((point) => (
-        <circle key={point.participant} cx={scale(point.x, xBounds)} cy={scale(point.y, yBounds)} r={POINT_RADIUS} fill={groupColor(point.group)}>
-          <title>{`${point.participant}（${groupName(point.group)}）`}</title>
-        </circle>
-      ))}
-    </svg>
-  )
+  const points = analysis.points.map((point) => ({ key: point.participant, x: point.x, y: point.y, group: point.group, label: `${point.participant}（${groupName(point.group)}）` }))
+  return <ScatterPlot points={points} summary={summary} />
 }
 
 /** 区画です。見出しを区画の名前にします。 */
@@ -143,7 +118,7 @@ export function VoteAnalysisView({ voteRows, commentTables }: VoteAnalysisViewPr
       )}
       {outcome?.ok && (
         <>
-          <ScatterPlot analysis={outcome.analysis} />
+          <ParticipantScatterPlot analysis={outcome.analysis} />
           <Section title="合意点">
             <p className="muted">すべてのグループで賛成が多い（賛成率が 60% 以上の）意見です。</p>
             {outcome.analysis.consensus.length === 0 ? (

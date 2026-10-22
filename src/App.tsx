@@ -12,9 +12,11 @@
 import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { useHashRoute } from './app/useHashRoute'
 import { useSeenPages, type SeenPagesState } from './app/useSeenPages'
+import { OpinionAnalysisContext } from './app/opinionAnalysis'
 import { useVaults, type AppDeps, type Vault } from './app/useVaults'
 import { ArgumentMapView } from './components/ArgumentMapView'
 import { CalloutsView } from './components/CalloutsView'
+import { ClusterJsonFileView } from './components/ClusterJsonFileView'
 import { CsvFileView } from './components/CsvFileView'
 import { DeferredPageView } from './components/DeferredPageView'
 import { FileTree } from './components/FileTree'
@@ -27,7 +29,7 @@ import { SearchResults, type VaultSearchResult } from './components/SearchResult
 import { StartView } from './components/StartView'
 import { PagesByTagView, PagesByTypeView, TaxonomyView } from './components/TaxonomyView'
 import { documentTitle } from './lib/documentTitle'
-import { isCsvPath } from './lib/path'
+import { isCsvPath, isJsonPath } from './lib/path'
 import { formatRoute, type Route } from './lib/route'
 import { searchPages } from './lib/search'
 import type { WikiIndex } from './lib/wikiIndex'
@@ -226,14 +228,16 @@ export default function App({ deps }: AppProps) {
 
       <main className="content">
         {errorBanner}
-        <MainContent
-          vault={vault}
-          route={route}
-          navigate={navigate}
-          seenPages={seenPages}
-          searchResults={routeResults}
-          onReconnect={() => void api.reconnect(vault.id)}
-        />
+        <OpinionAnalysisContext.Provider value={deps.opinionAnalysis}>
+          <MainContent
+            vault={vault}
+            route={route}
+            navigate={navigate}
+            seenPages={seenPages}
+            searchResults={routeResults}
+            onReconnect={() => void api.reconnect(vault.id)}
+          />
+        </OpinionAnalysisContext.Provider>
       </main>
     </div>
   )
@@ -369,6 +373,10 @@ function ViewContent({ vault, index, readText, readBlob, route, navigate, seenPa
       // raw/ の CSV ファイルは Markdown のページではないため、表や投票の集計として表示します
       if (!page && isCsvPath(route.path) && index.assetPaths.includes(route.path)) {
         return <CsvFileView path={route.path} index={index} readText={readText} />
+      }
+      // raw/ の JSON ファイルは、意見の分析で書き出した意見クラスタの結果として表示します
+      if (!page && isJsonPath(route.path) && index.assetPaths.includes(route.path)) {
+        return <ClusterJsonFileView path={route.path} readText={readText} />
       }
       if (!page) {
         return (

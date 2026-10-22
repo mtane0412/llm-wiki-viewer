@@ -78,6 +78,7 @@ describe('App', () => {
           seenStore: createSeenStore(store),
           pickDirectory: options.supportsPicker === false ? null : pickDirectory,
           pollIntervalMs: options.pollIntervalMs ?? 60_000,
+          opinionAnalysis: null,
         }}
       />,
     )
@@ -129,6 +130,15 @@ describe('App', () => {
     await user.click(await within(main).findByRole('link', { name: '投票の集計' }))
     const consensus = await within(main).findByRole('region', { name: /合意点/ })
     expect(within(consensus).getByText('通学路を安全にしてほしい')).toBeInTheDocument()
+  })
+
+  it('raw/ の JSON ファイルへのリンクを開くと、意見クラスタの JSON として表示する', async () => {
+    const wiki: FakeTree = { wiki: { 'index.md': '[[raw/clusters.json|分析結果]]' }, raw: { 'clusters.json': '{"hello": 1}' } }
+    const { user } = renderApp({ pick: [createFakeFileSystem('cluster-wiki', wiki).root] })
+    await user.click(await screen.findByRole('button', { name: 'Wiki フォルダを開く' }))
+    const main = await screen.findByRole('main')
+    await user.click(await within(main).findByRole('link', { name: '分析結果' }))
+    expect(await within(main).findByRole('alert')).toHaveTextContent('意見クラスタの JSON の形式ではありません')
   })
 
   it('lint 画面に壊れたリンクと孤立ページを表示する', async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createFakeFileSystem } from '../test/fakeFileSystem'
+import { createFileListSource } from './fileListSource'
 import { createFsAccessSource } from './fsAccessSource'
 import { createVaultLoader } from './loadVault'
 
@@ -60,6 +61,24 @@ describe('createVaultLoader', () => {
     expect(listFiles.mock.calls[0][0]?.includeDir?.('raw')).toBe(false)
     fs.writeFile('wiki/new.md', '# 新しいページ')
     expect(await loader.hasChanges()).toBe(true)
+  })
+
+  it('リポジトリ直下の CLAUDE.md をスキーマとして読み込み、変更を検知して読み直す', async () => {
+    const fs = createFakeFileSystem('wiki-schema', { 'CLAUDE.md': '# スキーマ v1', wiki: { 'index.md': '# 目次' } })
+    const loader = createVaultLoader(createFsAccessSource(fs.root))
+    expect((await loader.load()).index.schema?.content).toBe('# スキーマ v1')
+    fs.writeFile('CLAUDE.md', '# スキーマ v2')
+    expect(await loader.hasChanges()).toBe(true)
+    expect((await loader.load()).index.schema?.content).toBe('# スキーマ v2')
+  })
+
+  it('フォルダ選択の入力欄から読み込んだ場合も、リポジトリ直下の CLAUDE.md をスキーマとして読み込む', async () => {
+    const file = new File(['# スキーマ'], 'CLAUDE.md')
+    Object.defineProperty(file, 'webkitRelativePath', { value: 'my-wiki/CLAUDE.md' })
+    const page = new File(['# 目次'], 'index.md')
+    Object.defineProperty(page, 'webkitRelativePath', { value: 'my-wiki/wiki/index.md' })
+    const { index } = await createVaultLoader(createFileListSource([file, page])).load()
+    expect(index.schema).toEqual({ path: 'CLAUDE.md', content: '# スキーマ' })
   })
 
   it('wiki/ が無い場合は、raw/ 以外のすべてを Wiki として監視する', async () => {

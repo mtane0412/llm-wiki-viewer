@@ -3,7 +3,8 @@
  *
  * 画面構成:
  * - 左: Wiki の切り替え、検索、表示の切り替え（ページ / タグ / 未解決 / Lint / グラフ）、ページ一覧
- * - 右: 選んだ画面（ページ・タグと type の一覧・絞り込んだページ一覧・未解決の矛盾と問い・lint の指摘・グラフ）
+ * - 右: 選んだ画面（ページ・タグと type の一覧・絞り込んだページ一覧・未解決の矛盾と問い・lint の指摘・グラフ・スキーマ）
+ * リポジトリ直下に CLAUDE.md（Wiki のスキーマ）がある場合は、サイドバーからスキーマの画面を開けます。
  * Wiki を 1 つも開いていない場合は、スタート画面だけを表示します。
  */
 import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useState } from 'react'
@@ -15,6 +16,7 @@ import { FileTree } from './components/FileTree'
 import { FolderInput } from './components/FolderInput'
 import { LintView } from './components/LintView'
 import { PageView } from './components/PageView'
+import { SchemaView } from './components/SchemaView'
 import { SearchResults, type VaultSearchResult } from './components/SearchResults'
 import { StartView } from './components/StartView'
 import { PagesByTagView, PagesByTypeView, TaxonomyView } from './components/TaxonomyView'
@@ -141,6 +143,11 @@ export default function App({ deps }: AppProps) {
                 登録を解除
               </button>
             </div>
+            {index?.schema && (
+              <a className="schema-link small" href={formatRoute({ view: 'schema', vaultId: vault.id })} aria-current={route.view === 'schema' ? 'page' : undefined}>
+                スキーマ（CLAUDE.md）
+              </a>
+            )}
             {!vault.watchable && <p className="muted small">この Wiki は読み込んだ時点の内容です。変更は自動で反映されません。</p>}
           </div>
         </div>
@@ -253,6 +260,12 @@ function ViewContent({ vault, index, readText, readBlob, route, navigate }: View
   switch (route.view) {
     case 'callouts':
       return <CalloutsView index={index} vaultId={vault.id} readBlob={readBlob} />
+    case 'schema':
+      return index.schema ? (
+        <SchemaView schema={index.schema} index={index} vaultId={vault.id} readBlob={readBlob} />
+      ) : (
+        <p className="notice">この Wiki にはスキーマ（リポジトリ直下の CLAUDE.md）がありません。</p>
+      )
     case 'tags':
       return <TaxonomyView index={index} vaultId={vault.id} />
     case 'tag':

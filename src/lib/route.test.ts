@@ -48,6 +48,11 @@ describe('route', () => {
     expect(parseRoute('#/v1/callouts')).toEqual({ view: 'callouts', vaultId: 'v1' })
   })
 
+  it('スキーマ（CLAUDE.md）の URL を相互に変換する', () => {
+    expect(formatRoute({ view: 'schema', vaultId: 'v1' })).toBe('#/v1/schema')
+    expect(parseRoute('#/v1/schema')).toEqual({ view: 'schema', vaultId: 'v1' })
+  })
+
   it('Wiki だけを指定した URL はその Wiki のホームとして扱う', () => {
     expect(parseRoute('#/v1')).toEqual({ view: 'home', vaultId: 'v1' })
   })

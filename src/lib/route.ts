@@ -8,6 +8,7 @@
  * - `#/{vaultId}/graph` グラフ
  * - `#/{vaultId}/tags` タグと type の一覧
  * - `#/{vaultId}/callouts` 未解決の矛盾・問い（warning・question の callout）の一覧
+ * - `#/{vaultId}/schema` リポジトリ直下の CLAUDE.md（Wiki のスキーマ）
  * - `#/{vaultId}/tag/{タグ}` タグを持つページの一覧（タグの中の `/` もエンコードします）
  * - `#/{vaultId}/type/{type}` type が一致するページの一覧
  * - `#/{vaultId}` Wiki のホーム
@@ -22,6 +23,7 @@ export type Route =
   | { view: 'graph'; vaultId: string }
   | { view: 'tags'; vaultId: string }
   | { view: 'callouts'; vaultId: string }
+  | { view: 'schema'; vaultId: string }
   | { view: 'tag'; vaultId: string; tag: string }
   | { view: 'type'; vaultId: string; type: string }
 
@@ -50,6 +52,7 @@ export function formatRoute(route: Route): string {
     case 'graph':
     case 'tags':
     case 'callouts':
+    case 'schema':
       return `#/${encodeURIComponent(route.vaultId)}/${route.view}`
     case 'tag':
       return `#/${encodeURIComponent(route.vaultId)}/tag/${encodeURIComponent(route.tag)}`
@@ -72,7 +75,7 @@ export function parseRoute(hash: string): Route {
     const vaultId = decodeURIComponent(segments[0])
     const view = segments[1]
     if (view === undefined) return { view: 'home', vaultId }
-    if (view === 'lint' || view === 'graph' || view === 'tags' || view === 'callouts') return { view, vaultId }
+    if (view === 'lint' || view === 'graph' || view === 'tags' || view === 'callouts' || view === 'schema') return { view, vaultId }
     if (view === 'tag' && segments.length === 3) return { view, vaultId, tag: decodeURIComponent(segments[2]) }
     if (view === 'type' && segments.length === 3) return { view, vaultId, type: decodeURIComponent(segments[2]) }
     if (view === 'page' && segments.length > 2) {

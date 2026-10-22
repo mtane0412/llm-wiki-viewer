@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildWikiIndex } from '../lib/wikiIndex'
 import { MarkdownView } from './MarkdownView'
@@ -6,7 +7,7 @@ import { MarkdownView } from './MarkdownView'
 const index = buildWikiIndex({
   markdownFiles: [
     { path: 'wiki/index.md', content: '# 目次' },
-    { path: 'wiki/concepts/tool-use.md', content: '---\ntitle: Tool use\n---\n本文' },
+    { path: 'wiki/concepts/tool-use.md', content: '---\ntitle: Tool use\ntype: concept\n---\nツールを使う仕組みの本文。\n\n## 承認\n\n承認の節の本文。' },
   ],
   unloadedMarkdownPaths: [],
   assetPaths: ['raw/assets/diagram.png'],
@@ -131,4 +132,50 @@ describe('MarkdownView', () => {
     expect(container.querySelector('blockquote')).toHaveTextContent('ふつうの引用')
     expect(container.querySelector('.callout')).toBeNull()
   })
+
+  describe('wikilink のホバープレビュー', () => {
+    it('マウスを重ねると、リンク先のタイトル・type・本文の冒頭を表示し、離すと閉じる', async () => {
+      const user = userEvent.setup()
+      renderMarkdown('参照: [[concepts/tool-use]]')
+      await user.hover(screen.getByRole('link', { name: 'Tool use' }))
+      const tooltip = screen.getByRole('tooltip')
+      expect(within(tooltip).getByText('Tool use')).toBeInTheDocument()
+      expect(within(tooltip).getByText('concept')).toBeInTheDocument()
+      expect(tooltip).toHaveTextContent('ツールを使う仕組みの本文。')
+      await user.unhover(screen.getByRole('link', { name: 'Tool use' }))
+      expect(screen.queryByRole('tooltip')).toBeNull()
+    })
+
+    it('キーボードでフォーカスしたときも表示し、リンクの説明として関連付け、Escape で閉じる', async () => {
+      const user = userEvent.setup()
+      renderMarkdown('参照: [[concepts/tool-use]]')
+      await user.tab()
+      const link = screen.getByRole('link', { name: 'Tool use' })
+      expect(link).toHaveFocus()
+      const tooltip = screen.getByRole('tooltip')
+      expect(link).toHaveAttribute('aria-describedby', tooltip.id)
+      await user.keyboard('{Escape}')
+      expect(screen.queryByRole('tooltip')).toBeNull()
+    })
+
+    it('[[page#見出し]] では、その見出しの直後を表示する', async () => {
+      const user = userEvent.setup()
+      renderMarkdown('[[concepts/tool-use#承認]]')
+      await user.hover(screen.getByRole('link'))
+      const tooltip = screen.getByRole('tooltip')
+      expect(tooltip).toHaveTextContent('承認の節の本文。')
+      expect(tooltip).not.toHaveTextContent('ツールを使う仕組みの本文。')
+    })
+
+    it('未作成のリンク先は、フォーカスできる要素にし、まだ作成されていないことを表示する', async () => {
+      const user = userEvent.setup()
+      renderMarkdown('[[存在しないページ]]')
+      await user.tab()
+      // プレビューの中にもリンク先の名前が出るため、フォーカスしている要素を直接確かめます
+      expect(document.activeElement).toHaveClass('wikilink-broken')
+      expect(document.activeElement).toHaveTextContent('存在しないページ')
+      expect(screen.getByRole('tooltip')).toHaveTextContent('このページはまだ作成されていません。')
+    })
+  })
 })
+

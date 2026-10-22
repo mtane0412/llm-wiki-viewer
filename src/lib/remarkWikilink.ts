@@ -62,7 +62,11 @@ export function remarkWikilink(options: RemarkWikilinkOptions) {
         if (!resolved) {
           return {
             type: 'emphasis',
-            data: { hName: 'span', hProperties: { className: ['wikilink-broken'], title: `リンク先が見つかりません: ${target}` } },
+            data: {
+              hName: 'span',
+              // data-wikilink-target は、未作成のリンク先をホバープレビューで示すために使います
+              hProperties: { className: ['wikilink-broken'], title: `リンク先が見つかりません: ${target}`, dataWikilinkTarget: target },
+            },
             children: [{ type: 'text', value: alias ?? target }],
           }
         }

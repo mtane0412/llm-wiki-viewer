@@ -653,6 +653,47 @@ a.badge {
   cursor: help;
 }
 
+/* ---------- wikilink のホバープレビュー ---------- */
+.link-preview-anchor {
+  position: relative;
+}
+
+.link-preview {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  width: min(22rem, 80vw);
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: normal;
+  line-height: 1.6;
+  text-align: left;
+  white-space: normal;
+}
+
+.link-preview-title {
+  font-weight: 600;
+}
+
+.link-preview-heading {
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.link-preview-note {
+  color: var(--muted);
+}
+
 .image-loading {
   color: var(--muted);
   font-size: 0.85rem;

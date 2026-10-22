@@ -2,6 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { createSeenStore } from './source/seenStore'
 import { createVaultRegistry, type KeyValueStore } from './source/vaultRegistry'
 import { createFakeFileSystem, type FakeTree } from './test/fakeFileSystem'
 
@@ -57,17 +58,19 @@ describe('App', () => {
       if (!next) throw new DOMException('キャンセルされました', 'AbortError')
       return next
     })
-    const registry = createVaultRegistry(options.store ?? createMemoryStore())
-    render(
+    const store = options.store ?? createMemoryStore()
+    const registry = createVaultRegistry(store)
+    const { unmount } = render(
       <App
         deps={{
           registry,
+          seenStore: createSeenStore(store),
           pickDirectory: options.supportsPicker === false ? null : pickDirectory,
           pollIntervalMs: options.pollIntervalMs ?? 60_000,
         }}
       />,
     )
-    return { user: userEvent.setup(), pickDirectory, registry }
+    return { user: userEvent.setup(), pickDirectory, registry, unmount }
   }
 
   it('登録済みの Wiki が無ければスタート画面を表示する', async () => {
@@ -222,6 +225,51 @@ describe('App', () => {
     })
     expect(await screen.findByText(/再読み込みに失敗しました/, {}, { timeout: 2000 })).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByText(/再読み込みに失敗しました/)).toBeNull(), { timeout: 2000 })
+  })
+
+  it('前回の閲覧以降に LLM が更新・追加したページを「最近」の画面に示し、開くと既読にする', async () => {
+    const fs = createFakeFileSystem('agent-wiki', agentWiki)
+    const { user } = renderApp({ pick: [fs.root], pollIntervalMs: 50 })
+    await user.click(await screen.findByRole('button', { name: 'Wiki フォルダを開く' }))
+    await screen.findByRole('heading', { level: 1, name: 'Index' })
+
+    // 前提: 初めて開いた時点の内容を既読の基準にするため、最初は変わったページがありません
+    await user.click(screen.getByRole('link', { name: /最近/ }))
+    const changed = await screen.findByRole('region', { name: '前回の閲覧以降に変わったページ' })
+    expect(within(changed).getByText('変わったページはありません。')).toBeInTheDocument()
+
+    await act(async () => {
+      fs.writeFile('wiki/concepts/tool-use.md', '---\ntitle: Tool use\n---\n# Tool use\n\n承認の説明を追記した。')
+      fs.writeFile('wiki/concepts/agent.md', '---\ntitle: エージェント\n---\n新しいページ。')
+    })
+    const toolUse = await within(changed).findByRole('link', { name: 'Tool use' }, { timeout: 2000 })
+    expect(toolUse.closest('li')).toHaveTextContent('更新あり')
+    expect(within(changed).getByRole('link', { name: 'エージェント' }).closest('li')).toHaveTextContent('新規')
+
+    // 更新されたページを開くと既読になり、一覧から消えます
+    await user.click(toolUse)
+    await screen.findByText('承認の説明を追記した。')
+    await user.click(screen.getByRole('link', { name: /最近/ }))
+    const changedAfterRead = await screen.findByRole('region', { name: '前回の閲覧以降に変わったページ' })
+    expect(within(changedAfterRead).queryByRole('link', { name: 'Tool use' })).toBeNull()
+    expect(within(changedAfterRead).getByRole('link', { name: 'エージェント' })).toBeInTheDocument()
+  })
+
+  it('既読の記録は Wiki ごとに保存され、次回の起動時にも引き継がれる', async () => {
+    const store = createMemoryStore()
+    const fs = createFakeFileSystem('agent-wiki', agentWiki)
+    await createVaultRegistry(store).add(fs.root)
+    const first = renderApp({ store })
+    await screen.findByRole('heading', { level: 1, name: 'Index' })
+    first.unmount()
+
+    // 前提: アプリを閉じている間に LLM がページを更新しました
+    fs.writeFile('wiki/concepts/tool-use.md', '---\ntitle: Tool use\n---\n閉じている間の更新。')
+    const { user } = renderApp({ store })
+    await screen.findByRole('heading', { level: 1, name: 'Index' })
+    await user.click(screen.getByRole('link', { name: /最近/ }))
+    const changed = await screen.findByRole('region', { name: '前回の閲覧以降に変わったページ' })
+    expect(await within(changed).findByRole('link', { name: 'Tool use' })).toBeInTheDocument()
   })
 
   it('File System Access API が無いブラウザでは、フォルダ選択の入力欄から読み込む', async () => {

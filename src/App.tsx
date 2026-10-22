@@ -2,13 +2,14 @@
  * LLM Wiki Viewer のルートコンポーネントです。
  *
  * 画面構成:
- * - 左: Wiki の切り替え、検索、表示の切り替え（ページ / タグ / 未解決 / Lint / グラフ）、ページ一覧
- * - 右: 選んだ画面（ページ・タグと type の一覧・絞り込んだページ一覧・未解決の矛盾と問い・lint の指摘・グラフ・スキーマ）
+ * - 左: Wiki の切り替え、検索、表示の切り替え（ページ / タグ / 最近 / 未解決 / Lint / グラフ）、ページ一覧
+ * - 右: 選んだ画面（ページ・タグと type の一覧・絞り込んだページ一覧・最近の更新・未解決の矛盾と問い・lint の指摘・グラフ・スキーマ）
  * リポジトリ直下に CLAUDE.md（Wiki のスキーマ）がある場合は、サイドバーからスキーマの画面を開けます。
  * Wiki を 1 つも開いていない場合は、スタート画面だけを表示します。
  */
 import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { useHashRoute } from './app/useHashRoute'
+import { useSeenPages, type SeenPagesState } from './app/useSeenPages'
 import { useVaults, type AppDeps, type Vault } from './app/useVaults'
 import { CalloutsView } from './components/CalloutsView'
 import { DeferredPageView } from './components/DeferredPageView'
@@ -16,6 +17,7 @@ import { FileTree } from './components/FileTree'
 import { FolderInput } from './components/FolderInput'
 import { LintView } from './components/LintView'
 import { PageView } from './components/PageView'
+import { RecentView } from './components/RecentView'
 import { SchemaView } from './components/SchemaView'
 import { SearchResults, type VaultSearchResult } from './components/SearchResults'
 import { StartView } from './components/StartView'
@@ -49,6 +51,13 @@ export default function App({ deps }: AppProps) {
   const routeVaultId = vaultIdOf(route)
   const vault: Vault | undefined = api.vaults.find((item) => item.id === routeVaultId)
   const supportsPicker = deps.pickDirectory !== null
+  // フックは早期の return より前で呼ぶ必要があるため、Wiki が未読み込みでもここで呼びます
+  const seenPages = useSeenPages(
+    deps.seenStore,
+    vault?.status === 'ready' ? vault.id : null,
+    vault?.status === 'ready' ? vault.index : null,
+    route.view === 'page' ? route.path : null,
+  )
 
   // Wiki のホームを開いたら、ホームページ（index.md など）の URL に置き換えます
   useEffect(() => {
@@ -162,6 +171,9 @@ export default function App({ deps }: AppProps) {
           >
             タグ
           </a>
+          <a href={formatRoute({ view: 'recent', vaultId: vault.id })} aria-current={route.view === 'recent' ? 'page' : undefined}>
+            最近 {seenPages.status === 'ready' && seenPages.changes.size > 0 && <span className="count">{seenPages.changes.size}</span>}
+          </a>
           <a href={formatRoute({ view: 'callouts', vaultId: vault.id })} aria-current={route.view === 'callouts' ? 'page' : undefined}>
             未解決
           </a>
@@ -194,7 +206,7 @@ export default function App({ deps }: AppProps) {
 
       <main className="content">
         {errorBanner}
-        <MainContent vault={vault} route={route} navigate={navigate} onReconnect={() => void api.reconnect(vault.id)} />
+        <MainContent vault={vault} route={route} navigate={navigate} seenPages={seenPages} onReconnect={() => void api.reconnect(vault.id)} />
       </main>
     </div>
   )
@@ -205,11 +217,12 @@ interface MainContentProps {
   vault: Vault
   route: Route
   navigate: (hash: string) => void
+  seenPages: SeenPagesState
   onReconnect: () => void
 }
 
 /** 右側の主要な表示領域です。Wiki の状態と画面の種類に応じて表示を切り替えます。 */
-function MainContent({ vault, route, navigate, onReconnect }: MainContentProps) {
+function MainContent({ vault, route, navigate, seenPages, onReconnect }: MainContentProps) {
   if (vault.status === 'needs-permission') {
     return (
       <div className="notice">
@@ -240,7 +253,15 @@ function MainContent({ vault, route, navigate, onReconnect }: MainContentProps) 
   return (
     <>
       {reloadWarning}
-      <ViewContent vault={vault} index={index} readText={vault.readText} readBlob={vault.readBlob} route={route} navigate={navigate} />
+      <ViewContent
+        vault={vault}
+        index={index}
+        readText={vault.readText}
+        readBlob={vault.readBlob}
+        route={route}
+        navigate={navigate}
+        seenPages={seenPages}
+      />
     </>
   )
 }
@@ -253,11 +274,14 @@ interface ViewContentProps {
   readBlob: (path: string) => Promise<Blob>
   route: Route
   navigate: (hash: string) => void
+  seenPages: SeenPagesState
 }
 
 /** 画面の種類（ページ・タグ・未解決・lint・グラフ）に応じた表示です。 */
-function ViewContent({ vault, index, readText, readBlob, route, navigate }: ViewContentProps) {
+function ViewContent({ vault, index, readText, readBlob, route, navigate, seenPages }: ViewContentProps) {
   switch (route.view) {
+    case 'recent':
+      return <RecentView index={index} vaultId={vault.id} seenPages={seenPages} />
     case 'callouts':
       return <CalloutsView index={index} vaultId={vault.id} readBlob={readBlob} />
     case 'schema':

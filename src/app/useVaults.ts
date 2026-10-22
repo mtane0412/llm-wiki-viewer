@@ -10,6 +10,7 @@ import type { WikiIndex } from '../lib/wikiIndex'
 import { createFileListSource } from '../source/fileListSource'
 import { createFsAccessSource } from '../source/fsAccessSource'
 import { createVaultLoader, type VaultLoader } from '../source/loadVault'
+import type { SeenStore } from '../source/seenStore'
 import { ensureReadPermission, type VaultRegistry } from '../source/vaultRegistry'
 import type { WikiSource } from '../source/WikiSource'
 
@@ -17,6 +18,8 @@ import type { WikiSource } from '../source/WikiSource'
 export interface AppDeps {
   /** 登録済みフォルダの保存先です。 */
   registry: VaultRegistry
+  /** Wiki ごとの既読の記録の保存先です。 */
+  seenStore: SeenStore
   /** フォルダ選択ダイアログを開く関数です。File System Access API が無いブラウザでは null です。 */
   pickDirectory: (() => Promise<FileSystemDirectoryHandle>) | null
   /** ファイルの変更を調べる間隔（ミリ秒）です。 */

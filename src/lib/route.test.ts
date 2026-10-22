@@ -43,6 +43,11 @@ describe('route', () => {
     expect(parseRoute('#/v1/type/')).toEqual({ view: 'start' })
   })
 
+  it('最近の更新の URL を相互に変換する', () => {
+    expect(formatRoute({ view: 'recent', vaultId: 'v1' })).toBe('#/v1/recent')
+    expect(parseRoute('#/v1/recent')).toEqual({ view: 'recent', vaultId: 'v1' })
+  })
+
   it('未解決の矛盾・問いの一覧の URL を相互に変換する', () => {
     expect(formatRoute({ view: 'callouts', vaultId: 'v1' })).toBe('#/v1/callouts')
     expect(parseRoute('#/v1/callouts')).toEqual({ view: 'callouts', vaultId: 'v1' })

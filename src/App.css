@@ -939,6 +939,25 @@ a.badge {
   margin: 0;
 }
 
+.recent-date {
+  display: inline-block;
+  min-width: 6.5rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+/* 前回の閲覧以降の変化の印です。新規は強調色、更新ありは注意の色にします */
+.change-new {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.change-changed {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .lint-ok {
   color: var(--ok);
 }

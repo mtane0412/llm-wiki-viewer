@@ -9,7 +9,7 @@ File System Access API でローカルのフォルダを直接読むため、サ
 - wikilink のホバープレビュー（マウスまたはキーボードのフォーカスで、リンク先のタイトル・`type`・本文の冒頭を表示）
 - frontmatter（`type`・`tags`・`aliases`・`updated`・`sources`）の表示、バックリンク、見出しの目次
 - ソース要約ページなどで、そのページを `sources` に挙げて根拠にしているページを本文のバックリンクと分けて表示
-- Lint: 壊れたリンク・未作成ページ（赤リンク）の参照数順の一覧・孤立ページ・`sources` 未記載・frontmatter の YAML エラー・`index.md` に載っていないページ・frontmatter の必須項目の欠けと `type` の値の誤り（必須項目と `type` の選択肢は `CLAUDE.md` の frontmatter の例から読み取ります）
+- Lint: 壊れたリンク・未作成ページ（赤リンク）の参照数順の一覧・孤立ページ・`sources` 未記載・frontmatter の YAML エラー・`index.md` に載っていないページ・frontmatter の必須項目の欠けと `type` の値の誤り（必須項目と `type` の選択肢は `CLAUDE.md` の frontmatter の例から読み取ります）・どの wiki ページからも参照されていない `raw/` の元資料（要約で取りこぼした資料の点検に使います）
 - `log.md` のタイムライン表示（日付順・操作の種類での絞り込み・形式に合わない見出しの検出）
 - タグ・`type` の一覧（件数付き）と、タグ・`type` で絞り込んだページの一覧（URL で共有・再読み込みできます）
 - Obsidian 形式の callout（`> [!warning] 矛盾` など）の描画と、Wiki 全体の「未解決の矛盾・問い」（warning・question）の一覧

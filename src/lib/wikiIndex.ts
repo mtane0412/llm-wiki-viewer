@@ -63,6 +63,8 @@ export type LintIssue =
   | { kind: 'not-in-index'; page: string }
   | { kind: 'missing-frontmatter-keys'; page: string; keys: string[] }
   | { kind: 'invalid-type'; page: string; type: string }
+  /** どの wiki ページからも参照されていない raw/ の元資料です（page は元資料のパスです）。 */
+  | { kind: 'unreferenced-raw'; page: string }
 
 /** 未作成のページ（解決できないリンク先）と、そこへリンクしているページです。 */
 export interface RedLink {
@@ -361,6 +363,15 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     if (requiresSources(page, wikiRoot) && page.sources.length === 0) {
       issues.push({ kind: 'missing-sources', page: page.path })
     }
+  }
+
+  // 元資料の Markdown と Markdown 以外のファイルのうち、wiki ページの本文のリンク・埋め込みや sources で参照されていないものを指摘します。
+  // raw のファイルどうしのリンクは、元資料が Wiki に取り込まれたことを示さないため数えません
+  const rawPaths = [...pages.filter((page) => page.area === 'raw').map((page) => page.path), ...input.assetPaths.filter((path) => areaOf(path, wikiRoot) === 'raw')]
+  const referencedFromWiki = (path: string) =>
+    [...(backlinks.get(path) ?? []), ...(citations.get(path) ?? [])].some((from) => pageByPath.get(from)?.area === 'wiki')
+  for (const path of rawPaths.sort((a, b) => a.localeCompare(b))) {
+    if (!referencedFromWiki(path)) issues.push({ kind: 'unreferenced-raw', page: path })
   }
 
   return {

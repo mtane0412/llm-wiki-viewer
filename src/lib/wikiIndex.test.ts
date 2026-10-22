@@ -123,8 +123,8 @@ describe('buildWikiIndex', () => {
     expect(notInIndex).toEqual([])
   })
 
-  it('raw/ のページは lint の対象外にする', () => {
-    expect(index.issues.some((issue) => issue.page.startsWith('raw/'))).toBe(false)
+  it('raw/ のページは、取り込まれていない元資料の判定以外の lint の対象外にする', () => {
+    expect(index.issues.some((issue) => issue.kind !== 'unreferenced-raw' && issue.page.startsWith('raw/'))).toBe(false)
   })
 
   it('wiki/ フォルダが無い場合は選択したフォルダ全体を Wiki とみなす', () => {
@@ -311,5 +311,44 @@ describe('rankRedLinks', () => {
       { kind: 'broken-link', page: 'wiki/a.md', target: '未作成A' },
     ])
     expect(tie.map((item) => item.target)).toEqual(['未作成A', '未作成B'])
+  })
+})
+
+describe('取り込まれていない元資料（raw）の判定', () => {
+  // 前提: 元資料は Markdown 3 件と Markdown 以外のファイル 3 件です。
+  // - パブコメ要約.md は wiki ページの sources から、アンケート.csv は wiki ページの本文の埋め込みから参照されています
+  // - ヒアリング記録.md は raw のファイル（パブコメ要約.md）からしか参照されていません
+  // - 未読の意見書.md と 会議写真.png は、どこからも参照されていません
+  // - wiki/images/図.png は raw/ の外にあるため、判定の対象外です
+  const index = buildWikiIndex({
+    markdownFiles: [
+      { path: 'wiki/index.md', content: page('title: Index', '- [[concepts/子育て支援]]') },
+      {
+        path: 'wiki/concepts/子育て支援.md',
+        content: page('title: 子育て支援\ntype: concept\nsources: ["[[raw/パブコメ要約]]"]', '集計: ![[raw/アンケート.csv]]'),
+      },
+      { path: 'raw/パブコメ要約.md', content: '詳細は [[raw/ヒアリング記録]]' },
+    ],
+    unloadedMarkdownPaths: ['raw/ヒアリング記録.md', 'raw/未読の意見書.md'],
+    assetPaths: ['raw/アンケート.csv', 'raw/会議写真.png', 'wiki/images/図.png'],
+  })
+  const unreferenced = index.issues.filter((issue) => issue.kind === 'unreferenced-raw').map((issue) => issue.page)
+
+  it('どの wiki ページからも参照されていない raw の Markdown と、Markdown 以外のファイルを、パスの順に指摘する', () => {
+    expect(unreferenced).toEqual(['raw/ヒアリング記録.md', 'raw/会議写真.png', 'raw/未読の意見書.md'])
+  })
+
+  it('wiki ページの sources と本文の埋め込みから参照されている元資料は指摘しない', () => {
+    expect(unreferenced).not.toContain('raw/パブコメ要約.md')
+    expect(unreferenced).not.toContain('raw/アンケート.csv')
+  })
+
+  it('wiki/ が無い Wiki でも、raw/ の元資料を同じ規則で判定する', () => {
+    const flat = buildWikiIndex({
+      markdownFiles: [{ path: 'index.md', content: '[[raw/議事録]]' }],
+      unloadedMarkdownPaths: ['raw/議事録.md', 'raw/未整理のメモ.md'],
+      assetPaths: [],
+    })
+    expect(flat.issues.filter((issue) => issue.kind === 'unreferenced-raw').map((issue) => issue.page)).toEqual(['raw/未整理のメモ.md'])
   })
 })

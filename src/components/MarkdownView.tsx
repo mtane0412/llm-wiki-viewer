@@ -6,6 +6,7 @@
  * - 画像はフォルダ内のファイルを読み込み、Blob URL で表示します
  * - 見出しには見出しの文字列を id として付け、`[[page#見出し]]` で移動できるようにします
  * - Obsidian 形式の callout（`> [!warning] 矛盾`）を種類つきの枠として描画します（callout.ts）
+ * - Wiki のページへのリンクと未作成の wikilink には、ホバープレビューを付けます（LinkPreview.tsx）
  */
 import { useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 import Markdown, { type Components, type Options } from 'react-markdown'
@@ -13,8 +14,9 @@ import remarkGfm from 'remark-gfm'
 import { remarkCallout } from '../lib/callout'
 import { dirname, joinPath } from '../lib/path'
 import { createWikilinkOptions, EMBED_CLASS, remarkWikilink } from '../lib/remarkWikilink'
-import { formatRoute } from '../lib/route'
+import { formatRoute, parseRoute } from '../lib/route'
 import type { WikiIndex } from '../lib/wikiIndex'
+import { LinkPreview } from './LinkPreview'
 
 /** MarkdownView の引数です。 */
 export interface MarkdownViewProps {
@@ -115,15 +117,51 @@ export function MarkdownView({ markdown, index, pagePath, vaultId, readBlob, sel
       return path ? formatRoute({ view: 'page', vaultId, path, heading: fragment || undefined }) : null
     }
 
+    /** Wiki 内のリンクを描画します。この Wiki のページを指す場合は、ホバープレビューを付けます。 */
+    const internalLink = (href: string, props: ComponentPropsWithoutRef<'a'>, children: ReactNode) => {
+      const route = parseRoute(href)
+      if (route.view !== 'page' || route.vaultId !== vaultId || !index.pageByPath.has(route.path)) {
+        return <a href={href} {...props}>{children}</a>
+      }
+      return (
+        <LinkPreview
+          index={index}
+          target={{ kind: 'page', path: route.path, heading: route.heading }}
+          renderTrigger={(describedBy) => (
+            <a href={href} {...props} aria-describedby={describedBy}>
+              {children}
+            </a>
+          )}
+        />
+      )
+    }
+
     return {
       a({ href = '', children, node: _node, ...rest }) {
-        if (href.startsWith('#/')) return <a href={href} {...rest}>{children}</a>
+        if (href.startsWith('#/')) return internalLink(href, rest, children)
         if (EXTERNAL_URL.test(href)) {
           return <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>{children}</a>
         }
         const internal = toInternalHref(href)
-        if (internal) return <a href={internal} className="wikilink">{children}</a>
+        if (internal) return internalLink(internal, { className: 'wikilink' }, children)
         return <span className="wikilink-broken" title={`リンク先が見つかりません: ${href}`}>{children}</span>
+      },
+      span({ children, node: _node, title, ...rest }) {
+        const target = (rest as Record<string, unknown>)['data-wikilink-target']
+        if (typeof target !== 'string') return <span title={title} {...rest}>{children}</span>
+        // 未作成の wikilink は、キーボードでもプレビューを開けるようにフォーカスできる要素にします。
+        // ブラウザ標準のツールチップとプレビューが重ならないよう、title 属性は付けません
+        return (
+          <LinkPreview
+            index={index}
+            target={{ kind: 'missing', target }}
+            renderTrigger={(describedBy) => (
+              <span {...rest} tabIndex={0} aria-describedby={describedBy}>
+                {children}
+              </span>
+            )}
+          />
+        )
       },
       img({ src = '', alt = '', className }) {
         if (typeof src !== 'string') return null

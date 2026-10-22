@@ -18,6 +18,15 @@ export function stripMarkdownExtension(path: string): string {
   return path.replace(/\.md$/i, '')
 }
 
+/**
+ * パスからページ名（拡張子 .md を除いたファイル名の小文字）を返します。
+ *
+ * index・log・overview などの特別なページを、大文字小文字を区別せずに判定するために使います。
+ */
+export function pageNameOf(path: string): string {
+  return stripMarkdownExtension(basename(path)).toLowerCase()
+}
+
 /** 2 つのパスを結合し、`.` と `..` を解決します。ルートより上へ出る場合は null を返します。 */
 export function joinPath(base: string, relative: string): string | null {
   const segments = base ? base.split('/') : []

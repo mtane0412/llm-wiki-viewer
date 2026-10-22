@@ -48,11 +48,27 @@ describe('parseLog', () => {
 
   it('形式に合わない ## 見出しは捨てずに解析エラーとして残す', () => {
     expect(log.entries[1]).toEqual({ kind: 'invalid', heading: '2026-10-15 query ツールの承認方式', body: '形式に合わない見出しの本文' })
+    expect(log.entries[0]).toMatchObject({ heading: '[2026-10-14] ingest | Codex リポジトリ' })
   })
 
   it('スキーマに無い種類や、存在しない日付の見出しも解析エラーにする', () => {
     const { entries } = parseLog('## [2026-10-14] review | 種類が不明\n\n## [2026-02-30] ingest | 2 月 30 日\n\n## [2026-10-14] ingest |')
     expect(entries.map((entry) => entry.kind)).toEqual(['invalid', 'invalid', 'invalid'])
+  })
+
+  it('見出しの元の文字列（wikilink を含む）を、エントリの見出しとして保持する', () => {
+    const { entries } = parseLog('## [2026-10-14] ingest | [[sources/codex-repo]] の取り込み')
+    expect(entries[0]).toMatchObject({ heading: '[2026-10-14] ingest | [[sources/codex-repo]] の取り込み', title: '[[sources/codex-repo]] の取り込み' })
+  })
+
+  it('下線で書いた Setext 形式の見出しも、形式どおりなら日付・種類・タイトルに分解する', () => {
+    const { entries } = parseLog('[2026-10-14] schema | 用語の統一\n---\n\n本文')
+    expect(entries[0]).toMatchObject({ kind: 'entry', date: '2026-10-14', operation: 'schema', title: '用語の統一', body: '本文' })
+  })
+
+  it('100 年未満の年も、実在する日付なら形式どおりとみなす', () => {
+    const { entries } = parseLog('## [0004-02-29] ingest | 紀元 4 年のうるう日\n\n## [0001-02-29] ingest | 紀元 1 年はうるう年ではない')
+    expect(entries.map((entry) => entry.kind)).toEqual(['entry', 'invalid'])
   })
 
   it('エントリが無い log.md は、全体を前書きとして扱う', () => {

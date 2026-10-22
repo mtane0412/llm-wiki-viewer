@@ -18,11 +18,13 @@ const index = buildWikiIndex({
         '',
         '## 2026-10-15 query ツールの承認方式',
         '',
+        '形式を誤った見出しの本文',
+        '',
         '## [2026-10-16] lint | 孤立ページの解消',
         '',
         '- 修正: [[concepts/tool-use]]',
         '',
-        '## [2026-10-16] ingest | Claude Code のドキュメント',
+        '## [2026-10-16] ingest | [[concepts/tool-use]] の追記',
       ].join('\n'),
     },
     { path: 'wiki/concepts/tool-use.md', content: '---\ntitle: ツール使用\n---\n本文' },
@@ -32,10 +34,10 @@ const index = buildWikiIndex({
 })
 
 /** log.md を表示するヘルパーです。 */
-function renderLog() {
+function renderLog(heading?: string) {
   const page = index.pageByPath.get('wiki/log.md')
   if (!page) throw new Error('テストデータに log.md がありません')
-  render(<PageView page={page} index={index} vaultId="v1" heading={undefined} readBlob={vi.fn()} />)
+  render(<PageView page={page} index={index} vaultId="v1" heading={heading} readBlob={vi.fn()} />)
   return screen.getByRole('list', { name: 'タイムライン' })
 }
 
@@ -54,7 +56,7 @@ describe('log.md のタイムライン', () => {
   it('エントリを新しい日付から順に、日付と種類とともに表示する', () => {
     const timeline = renderLog()
     // 同じ日付のエントリは、後から追記したものを先に表示します
-    expect(titlesIn(timeline)).toEqual(['Claude Code のドキュメント', '孤立ページの解消', 'Codex リポジトリ'])
+    expect(titlesIn(timeline)).toEqual(['ツール使用 の追記', '孤立ページの解消', 'Codex リポジトリ'])
     const first = within(timeline).getAllByRole('listitem')[0]
     expect(within(first).getByText('2026-10-16').tagName).toBe('TIME')
     expect(within(first).getByText('ingest')).toBeInTheDocument()
@@ -65,10 +67,25 @@ describe('log.md のタイムライン', () => {
     expect(within(timeline).getAllByRole('link', { name: 'ツール使用' })[0]).toHaveAttribute('href', '#/v1/page/wiki/concepts/tool-use.md')
   })
 
+  it('タイトルの中の wikilink もページへのリンクとして描画する', () => {
+    const timeline = renderLog()
+    const title = within(timeline).getAllByRole('heading', { level: 2 })[0]
+    expect(within(title).getByRole('link', { name: 'ツール使用' })).toHaveAttribute('href', '#/v1/page/wiki/concepts/tool-use.md')
+  })
+
+  it('見出し指定の URL で開いた場合は、その見出しのエントリへスクロールする', () => {
+    Element.prototype.scrollIntoView = vi.fn()
+    // 前提: 通常のページと同じく、見出しの文字列全体（日付と種類を含む）で見出しを指定します
+    renderLog('[2026-10-16] lint | 孤立ページの解消')
+    expect(vi.mocked(Element.prototype.scrollIntoView).mock.contexts[0]).toHaveTextContent('孤立ページの解消')
+  })
+
   it('形式に合わない見出しは、解析エラーとしてタイムラインと区別して示す', () => {
     renderLog()
     const invalid = screen.getByRole('region', { name: /形式に合わない見出し/ })
     expect(within(invalid).getByText('2026-10-15 query ツールの承認方式')).toBeInTheDocument()
+    // 書式を直すまでの間も内容を読めるよう、本文も表示します
+    expect(within(invalid).getByText('形式を誤った見出しの本文')).toBeInTheDocument()
     expect(within(screen.getByRole('list', { name: 'タイムライン' })).queryByText(/ツールの承認方式/)).toBeNull()
   })
 

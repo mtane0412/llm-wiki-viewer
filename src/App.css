@@ -1165,6 +1165,12 @@ a.badge {
   border-radius: 6px;
 }
 
+/* 散布図の点の横に書く参加者の名前です */
+.scatter-caption {
+  font-size: 9px;
+  fill: var(--text);
+}
+
 .vote-rates {
   display: block;
   font-size: 0.8rem;

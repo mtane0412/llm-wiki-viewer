@@ -16,9 +16,14 @@ export interface ArgumentMapViewProps {
   vaultId: string
 }
 
+/** ページのタイトルです。ページが見つからない場合はパスを返します。 */
+function pageTitle(index: WikiIndex, path: string): string {
+  return index.pageByPath.get(path)?.title ?? path
+}
+
 /** ページへのリンクです。ページのタイトルを表示します。 */
 function PageLink({ index, vaultId, path }: { index: WikiIndex; vaultId: string; path: string }) {
-  return <a href={formatRoute({ view: 'page', vaultId, path, heading: undefined })}>{index.pageByPath.get(path)?.title ?? path}</a>
+  return <a href={formatRoute({ view: 'page', vaultId, path, heading: undefined })}>{pageTitle(index, path)}</a>
 }
 
 /** 賛成または反対の論拠の一覧です。各論拠に出典（sources）を添えます。 */
@@ -38,18 +43,23 @@ function ArgumentList({ label, paths, index, vaultId }: { label: string; paths: 
               <li key={path}>
                 <PageLink index={index} vaultId={vaultId} path={path} />
                 {sources.length > 0 && (
-                  <span className="argument-sources muted">
-                    出典:
-                    {sources.map((source) =>
-                      source.resolvedPath === null ? (
-                        <code key={source.target} className="lint-target">
-                          {source.target}
-                        </code>
-                      ) : (
-                        <PageLink key={source.target} index={index} vaultId={vaultId} path={source.resolvedPath} />
-                      ),
-                    )}
-                  </span>
+                  // 論拠のリンクと見分けられるよう、出典は左に罫線を引いた小さな入れ子の一覧にします
+                  <div className="argument-sources">
+                    <span className="argument-sources-label">出典</span>
+                    {/* list-style: none でも Safari が一覧として読み上げるよう、role="list" を明示します */}
+                    <ul role="list" aria-label={`${pageTitle(index, path)}の出典`}>
+                      {sources.map((source, sourceIndex) => (
+                        // 同じ出典が 2 回書かれていてもキーが重ならないよう、順番を含めます
+                        <li key={`${sourceIndex}:${source.target}`}>
+                          {source.resolvedPath === null ? (
+                            <code className="lint-target">{source.target}</code>
+                          ) : (
+                            <PageLink index={index} vaultId={vaultId} path={source.resolvedPath} />
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </li>
             )

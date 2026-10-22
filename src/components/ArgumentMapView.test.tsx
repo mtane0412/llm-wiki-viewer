@@ -38,6 +38,45 @@ describe('ArgumentMapView', () => {
     expect(within(supports).getByRole('link', { name: '市の調査' })).toHaveAttribute('href', `#/v1/page/wiki/${encodeURIComponent('市の調査')}.md`)
   })
 
+  it('出典は、論拠とは別の「〇〇の出典」という名前の一覧に分けて表示する', () => {
+    render(<ArgumentMapView index={index} vaultId="v1" />)
+    // 論拠のリンクと見分けられるよう、出典は論拠ごとの入れ子の一覧にまとめます
+    const sources = screen.getByRole('list', { name: '子育て世帯の負担が減るの出典' })
+    expect(within(sources).getByRole('link', { name: '市の調査' })).toBeInTheDocument()
+    expect(within(sources).queryByRole('link', { name: '子育て世帯の負担が減る' })).not.toBeInTheDocument()
+  })
+
+  it('Wiki に無い出典は、リンクにせず書かれたとおりの名前で出典の一覧に表示する', () => {
+    const unresolved = buildWikiIndex({
+      markdownFiles: [
+        { path: 'wiki/論点.md', content: page('title: 給食を無償化すべきか\ntype: issue') },
+        { path: 'wiki/賛成.md', content: page('title: 無償化に賛成\ntype: position\nissue: "[[論点]]"') },
+        { path: 'wiki/負担軽減.md', content: page('title: 子育て世帯の負担が減る\ntype: argument\nsupports: "[[賛成]]"\nsources: ["[[未取材の記事]]"]') },
+      ],
+      unloadedMarkdownPaths: [],
+      assetPaths: [],
+    })
+    render(<ArgumentMapView index={unresolved} vaultId="v1" />)
+    const sources = screen.getByRole('list', { name: '子育て世帯の負担が減るの出典' })
+    expect(within(sources).getByText('未取材の記事')).toBeInTheDocument()
+    expect(within(sources).queryByRole('link')).not.toBeInTheDocument()
+  })
+
+  it('出典の無い論拠には、出典の一覧を表示しない', () => {
+    const noSources = buildWikiIndex({
+      markdownFiles: [
+        { path: 'wiki/論点.md', content: page('title: 給食を無償化すべきか\ntype: issue') },
+        { path: 'wiki/賛成.md', content: page('title: 無償化に賛成\ntype: position\nissue: "[[論点]]"') },
+        { path: 'wiki/負担軽減.md', content: page('title: 子育て世帯の負担が減る\ntype: argument\nsupports: "[[賛成]]"') },
+      ],
+      unloadedMarkdownPaths: [],
+      assetPaths: [],
+    })
+    render(<ArgumentMapView index={noSources} vaultId="v1" />)
+    expect(screen.queryByRole('list', { name: '子育て世帯の負担が減るの出典' })).not.toBeInTheDocument()
+    expect(screen.queryByText('出典')).not.toBeInTheDocument()
+  })
+
   it('立場の無い論点では、その旨を表示する', () => {
     const lonely = buildWikiIndex({ markdownFiles: [{ path: 'wiki/論点.md', content: page('title: 議論の無い論点\ntype: issue') }], unloadedMarkdownPaths: [], assetPaths: [] })
     render(<ArgumentMapView index={lonely} vaultId="v1" />)

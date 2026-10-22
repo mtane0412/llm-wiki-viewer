@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildWikiIndex } from '../lib/wikiIndex'
+import { buildWikiIndex, toPage } from '../lib/wikiIndex'
 import { PageView } from './PageView'
 
 /** 見出しを複数持つ長いページと、見出しの無い短いページを含む Wiki です。 */
@@ -133,5 +133,32 @@ describe('PageView の根拠としての被参照', () => {
   it('ソース要約ではなく、根拠としても参照されていないページでは表示しない', () => {
     renderSourcePage('wiki/analyses/比較.md')
     expect(screen.queryByRole('region', { name: /を根拠にしているページ/ })).toBeNull()
+  })
+})
+
+describe('PageView のタグと type', () => {
+  it('タグと type を、それぞれで絞り込んだページ一覧へのリンクとして表示する', () => {
+    const tagged = buildWikiIndex({
+      markdownFiles: [{ path: 'wiki/concepts/tool-use.md', content: '---\ntitle: ツール使用\ntype: concept\ntags: [agent]\n---\n本文' }],
+      unloadedMarkdownPaths: [],
+      assetPaths: [],
+    })
+    const page = tagged.pageByPath.get('wiki/concepts/tool-use.md')
+    if (!page) throw new Error('テストデータにページがありません')
+    window.scrollTo = vi.fn()
+    render(<PageView page={page} index={tagged} vaultId="v1" heading={undefined} readBlob={vi.fn()} />)
+    expect(screen.getByRole('link', { name: '#agent' })).toHaveAttribute('href', '#/v1/tag/agent')
+    expect(screen.getByRole('link', { name: 'concept' })).toHaveAttribute('href', '#/v1/type/concept')
+  })
+
+  it('raw/ の元資料のタグと type は、一覧に含まれないためリンクにしない', () => {
+    const rawIndex = buildWikiIndex({ markdownFiles: [], unloadedMarkdownPaths: ['raw/notes/memo.md'], assetPaths: [] })
+    // 前提: 元資料は開いたときに読み込み、索引のタグ・type の一覧には含まれません
+    const rawPage = toPage({ path: 'raw/notes/memo.md', content: '---\ntype: memo\ntags: [生メモ]\n---\n本文' }, 'raw').page
+    window.scrollTo = vi.fn()
+    render(<PageView page={rawPage} index={rawIndex} vaultId="v1" heading={undefined} readBlob={vi.fn()} />)
+    expect(screen.getByText('#生メモ')).not.toHaveAttribute('href')
+    expect(screen.queryByRole('link', { name: '#生メモ' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'memo' })).toBeNull()
   })
 })

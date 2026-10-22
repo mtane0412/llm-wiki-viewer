@@ -115,11 +115,13 @@ export function isSpecialPage(path: string): boolean {
   return SPECIAL_PAGE_NAMES.has(pageNameOf(path))
 }
 
-/** 値を文字列の配列として取り出します。単一の文字列は 1 要素の配列にします。 */
+/**
+ * 値を文字列の配列として取り出します。単一の文字列は 1 要素の配列にします。
+ * 要素は toOptionalString と同じく文字列にし（日付は YYYY-MM-DD）、空白だけの要素は除きます。
+ */
 function toStringList(value: unknown): string[] {
-  if (Array.isArray(value)) return value.filter((item) => item !== null && item !== undefined).map(String)
-  if (typeof value === 'string' && value.trim()) return [value]
-  return []
+  const items = Array.isArray(value) ? value : typeof value === 'string' || value instanceof Date ? [value] : []
+  return items.map(toOptionalString).filter((item): item is string => item !== undefined && item.trim() !== '')
 }
 
 /** 値が空でなければ文字列にします。YAML が日付として解釈した値も文字列にします。 */
@@ -162,7 +164,10 @@ export function toPage(file: MarkdownFile, area: WikiPage['area']): { page: Wiki
       area,
       title: toOptionalString(data.title) ?? stripMarkdownExtension(basename(file.path)),
       aliases: toStringList(data.aliases),
-      tags: toStringList(data.tags),
+      // Obsidian では frontmatter のタグを `#ai` とも書けるため、先頭の # を除いて `ai` と同じタグとして扱います
+      tags: toStringList(data.tags)
+        .map((tag) => tag.replace(/^#+/, ''))
+        .filter(Boolean),
       type: toOptionalString(data.type),
       updated: toOptionalString(data.updated),
       sources: parseSourceTargets(sourceList),

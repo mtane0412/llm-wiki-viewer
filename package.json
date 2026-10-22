@@ -15,11 +15,14 @@
   "dependencies": {
     "idb-keyval": "^6.3.0",
     "mdast-util-find-and-replace": "^3.0.3",
+    "mdast-util-to-string": "^4.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-force-graph-2d": "^1.29.2",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0",
     "yaml": "^2.9.1"
   },

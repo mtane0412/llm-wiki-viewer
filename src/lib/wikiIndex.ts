@@ -185,7 +185,7 @@ function findRootPage(pages: WikiPage[], wikiRoot: string, name: string): string
 
 /** ページが Wiki ルート直下にある、指定した名前（小文字・拡張子なし）のページかを判定します。 */
 function isRootPageNamed(page: WikiPage, wikiRoot: string, name: string): boolean {
-  return page.area === 'wiki' && dirname(page.path) === wikiRoot && stripMarkdownExtension(basename(page.path)).toLowerCase() === name
+  return page.area === 'wiki' && dirname(page.path) === wikiRoot && pageNameOf(page.path) === name
 }
 
 /** ページが Wiki ルート直下の index・log・overview のいずれかかを判定します。 */

@@ -19,7 +19,12 @@ const json = serializeClusterJson(
     ],
     2,
   ),
-  { modelId: 'テスト用の埋め込みモデル', source: 'raw/comments.csv' },
+  {
+    modelId: 'テスト用の埋め込みモデル',
+    source: 'raw/comments.csv',
+    labelModelId: 'テスト用の LLM',
+    labels: [{ clusterId: 1, label: '公園の整備', description: '公園を増やしてほしいという意見です。', basisCommentIds: ['c3'] }],
+  },
 )
 
 describe('ClusterJsonFileView', () => {
@@ -29,6 +34,14 @@ describe('ClusterJsonFileView', () => {
     await user.click(await screen.findByRole('button', { name: /クラスタ 1（2 件）/ }))
     expect(within(screen.getByRole('list', { name: 'クラスタ 1 の意見' })).getByText('給食の量を増やしてほしい')).toBeInTheDocument()
     expect(screen.getByText(/テスト用の埋め込みモデル/)).toBeInTheDocument()
+  })
+
+  it('JSON に含まれるラベルを、LLM が生成した要約として表示する', async () => {
+    const user = userEvent.setup()
+    render(<ClusterJsonFileView path="raw/clusters.json" readText={vi.fn(async () => json)} />)
+    await user.click(await screen.findByRole('button', { name: /公園の整備（1 件）/ }))
+    expect(screen.getByText('公園を増やしてほしいという意見です。')).toBeInTheDocument()
+    expect(screen.getByText('LLM が生成した要約')).toBeInTheDocument()
   })
 
   it('意見クラスタの JSON でない場合は、理由を表示する', async () => {

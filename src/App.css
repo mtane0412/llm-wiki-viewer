@@ -1219,3 +1219,33 @@ a.badge {
   align-items: center;
   gap: 0.4rem;
 }
+
+/* LLM が生成したクラスタのラベルです。生成した要約であることを示す印を添えます */
+.cluster-label {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--accent);
+}
+
+.cluster-label p {
+  margin: 0.2rem 0;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.cluster-basis {
+  margin: 0.2rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+}
+
+.cluster-basis .lint-target {
+  margin-right: 0.4rem;
+}

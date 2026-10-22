@@ -4,13 +4,17 @@
  * 「意見を分析」を押すと、埋め込みモデル（初回はダウンロード）で意見をベクトルにし、クラスタに分けて散布図に描きます。
  * 埋め込みの結果は、入力の内容とモデルのハッシュをキーにキャッシュし、同じ入力を開いたときは再計算せずに表示します。
  * クラスタ数を変えても埋め込みは使い回します。結果は JSON で書き出せます。
+ * 「ラベルを生成」を押すと、各クラスタの代表的な意見からブラウザ内の LLM で見出しと説明を生成します（クラスタ数ごとにキャッシュします）。
  */
-import { useContext, useEffect, useId, useMemo, useState } from 'react'
+import { useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { OpinionAnalysisContext, type OpinionAnalysisDeps } from '../app/opinionAnalysis'
 import type { EmbeddingDevice, EmbeddingProgress } from '../embedding/embedder'
-import { analysisCacheKey, clusterOpinions, serializeClusterJson } from '../lib/opinionClusters'
+import type { GenerationProgress, LabelerSupport } from '../llm/labeler'
+import { buildLabelMessages, LABEL_PROMPT_VERSION, parseLabelOutput, pickBasisComments, type ClusterLabel } from '../lib/clusterLabels'
+import { analysisCacheKey, clusterOpinions, serializeClusterJson, type OpinionClusterResult } from '../lib/opinionClusters'
 import type { Comment } from '../lib/opinions'
 import { basename } from '../lib/path'
+import { clusterName } from './clusterName'
 import { OpinionClustersView } from './OpinionClustersView'
 
 /** OpinionAnalysisPanel の引数です。 */
@@ -36,22 +40,25 @@ type AnalysisState =
   /**
    * device は、モデルを動かした手段です（キャッシュから読んだ場合は null）。
    * cacheError は、結果をキャッシュに保存できなかった理由です（保存できた・キャッシュから読んだ場合は null）。
+   * embeddingKey は、埋め込みのキャッシュのキーです（ラベルのキャッシュのキーにも使います）。
    */
-  | { status: 'done'; embeddings: number[][]; device: EmbeddingDevice | null; cacheError: string | null }
+  | { status: 'done'; embeddings: number[][]; device: EmbeddingDevice | null; cacheError: string | null; embeddingKey: string }
   | { status: 'error'; message: string }
 
 /** 既定のクラスタ数です（意見の件数が少なければ件数にします）。 */
 const DEFAULT_CLUSTER_COUNT = 5
 /** 選べるクラスタ数の上限です。 */
 const MAX_CLUSTER_COUNT = 12
+/** ラベルの根拠として LLM に渡す、クラスタの代表的な意見の件数です。 */
+const BASIS_COMMENT_COUNT = 10
 /** モデルを動かした手段の表示名です。 */
 const DEVICE_LABELS: Record<EmbeddingDevice, string> = { webgpu: 'WebGPU', wasm: 'WASM' }
 /** バイトをメガバイトにする割る数です。 */
 const BYTES_PER_MEGABYTE = 1_000_000
 
-/** 進捗を表示します。 */
-function ProgressView({ progress }: { progress: EmbeddingProgress | null }) {
-  if (!progress) return <p className="muted">埋め込みモデルを準備しています…</p>
+/** 埋め込み・ラベルの生成の進捗を表示します。 */
+function ProgressView({ progress, preparingLabel }: { progress: EmbeddingProgress | null; preparingLabel: string }) {
+  if (!progress) return <p className="muted">{preparingLabel}</p>
   const [label, done, total, detail] =
     progress.phase === 'download'
       ? ['モデルのダウンロード', progress.loadedBytes, progress.totalBytes, `${(progress.loadedBytes / BYTES_PER_MEGABYTE).toFixed(1)} / ${(progress.totalBytes / BYTES_PER_MEGABYTE).toFixed(1)} MB`]
@@ -75,8 +82,158 @@ function downloadJson(json: string, fileName: string): void {
   URL.revokeObjectURL(url)
 }
 
+/** 形式の誤りなどでラベルを生成できなかったクラスタと、その理由です。 */
+interface LabelFailure {
+  clusterId: number
+  message: string
+}
+
+/** キャッシュに保存するラベルの生成の結果です。失敗したクラスタも保存し、開き直したときに失敗として示します。 */
+interface CachedLabels {
+  labels: ClusterLabel[]
+  failures: LabelFailure[]
+}
+
+/** ラベルの生成の状態です。 */
+type LabelingState =
+  | { status: 'idle' }
+  | { status: 'running'; clusterId: number; progress: GenerationProgress | null }
+  /** モデルの読み込みなど、クラスタに依らない失敗です。 */
+  | { status: 'error'; message: string }
+
+/** 分析結果に、LLM によるラベルの生成を加えた部分です。クラスタ数ごとに作り直します。 */
+function LabeledClusters({ path, result, deps, embeddingKey }: { path: string; result: OpinionClusterResult; deps: OpinionAnalysisDeps; embeddingKey: string }) {
+  const { embedder, labeler, cache } = deps
+  // プロンプトの版と根拠の件数もキーに含め、生成の条件を変えたら古いラベルを使わないようにします
+  const labelKey = `labels:v${LABEL_PROMPT_VERSION}:${BASIS_COMMENT_COUNT}:${embeddingKey}:${result.clusters.length}:${labeler.modelId}`
+  const [support, setSupport] = useState<LabelerSupport | null>(null)
+  const [labels, setLabels] = useState<ClusterLabel[]>([])
+  const [failures, setFailures] = useState<LabelFailure[]>([])
+  // クラスタ数を変えて作り直された後は、古い部品の生成を続けないようにします
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  const [labeling, setLabeling] = useState<LabelingState>({ status: 'idle' })
+  const [cacheError, setCacheError] = useState<string | null>(null)
+
+  // この環境で LLM を動かせるかを調べ、同じ入力・クラスタ数のラベルがキャッシュにあれば表示します
+  useEffect(() => {
+    let cancelled = false
+    labeler.checkSupport().then((value) => {
+      if (!cancelled) setSupport(value)
+    })
+    cache.get<CachedLabels>(labelKey).then(
+      (cached) => {
+        if (cancelled || !cached) return
+        setLabels(cached.labels)
+        setFailures(cached.failures)
+      },
+      (cause: unknown) => {
+        if (!cancelled) setCacheError(`ラベルのキャッシュを読めませんでした: ${cause instanceof Error ? cause.message : String(cause)}`)
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [labeler, cache, labelKey])
+
+  /** 生成の結果を表示し、キャッシュに保存します。 */
+  const saveLabels = async (saved: CachedLabels) => {
+    setLabels(saved.labels)
+    setFailures(saved.failures)
+    try {
+      await cache.set(labelKey, saved)
+      setCacheError(null)
+    } catch (cause) {
+      setCacheError(`ラベルをキャッシュに保存できませんでした: ${cause instanceof Error ? cause.message : String(cause)}`)
+    }
+  }
+
+  /** ラベルの無いクラスタのラベルを、クラスタの順に 1 つずつ生成します。生成済みのラベルは作り直しません。 */
+  const generate = async () => {
+    let generated = labels
+    const failed: LabelFailure[] = []
+    setFailures([])
+    for (const cluster of result.clusters.filter((item) => !labels.some((label) => label.clusterId === item.id))) {
+      if (!mounted.current) return
+      setLabeling({ status: 'running', clusterId: cluster.id, progress: null })
+      const basis = pickBasisComments(result, cluster.id, BASIS_COMMENT_COUNT)
+      let output: string
+      try {
+        output = await labeler.generate(buildLabelMessages(basis), (progress) => {
+          if (mounted.current) setLabeling({ status: 'running', clusterId: cluster.id, progress })
+        })
+      } catch (cause) {
+        // モデルの読み込みの失敗などでは残りのクラスタも生成できないため止めます。生成済みのラベルは残し、次は足りないクラスタだけを生成します
+        if (!mounted.current) return
+        setLabeling({ status: 'error', message: cause instanceof Error ? cause.message : String(cause) })
+        await saveLabels({ labels: generated, failures: failed })
+        return
+      }
+      if (!mounted.current) return
+      // 出力が想定の形式でないクラスタは、空のラベルにせず失敗として記録し、ほかのクラスタの生成は続けます
+      try {
+        generated = [...generated, { clusterId: cluster.id, ...parseLabelOutput(output), basisCommentIds: basis.map((comment) => comment.id) }].sort(
+          (a, b) => a.clusterId - b.clusterId,
+        )
+        setLabels(generated)
+      } catch (cause) {
+        failed.push({ clusterId: cluster.id, message: cause instanceof Error ? cause.message : String(cause) })
+      }
+    }
+    setLabeling({ status: 'idle' })
+    await saveLabels({ labels: generated, failures: failed })
+  }
+
+  const exportJson = () => {
+    const meta = labels.length > 0 ? { labelModelId: labeler.modelId, labels } : {}
+    downloadJson(serializeClusterJson(result, { modelId: embedder.modelId, source: path, ...meta }), `${basename(path).replace(/\.csv$/i, '')}-clusters.json`)
+  }
+
+  return (
+    <>
+      <p className="analysis-toolbar">
+        <button type="button" className="button" onClick={exportJson}>
+          JSON を書き出す
+        </button>
+        {support?.ok && labeling.status !== 'running' && (
+          <button type="button" className="button" onClick={generate}>
+            ラベルを生成
+          </button>
+        )}
+      </p>
+      <p className="muted">
+        {`埋め込みモデル: ${embedder.modelId}。書き出した JSON を raw/ に置くと、モデル無しでこの結果を表示できます。ラベルは、各クラスタの代表的な意見（中心に近い順に最大 ${BASIS_COMMENT_COUNT} 件）からブラウザ内の LLM（${labeler.modelId}。初回は ${labeler.downloadSizeLabel} をダウンロード）で生成します。`}
+      </p>
+      {support && !support.ok && <p className="lint-unavailable">{support.reason}</p>}
+      {labeling.status === 'running' && (
+        <>
+          <p className="muted">{`${clusterName(labeling.clusterId)} / ${result.clusters.length} のラベルを生成しています…`}</p>
+          {labeling.progress?.phase === 'download' && <ProgressView progress={labeling.progress} preparingLabel="LLM を準備しています…" />}
+        </>
+      )}
+      {labeling.status === 'error' && (
+        <p role="alert" className="error-banner">
+          {`ラベルを生成できませんでした: ${labeling.message}`}
+        </p>
+      )}
+      {failures.map((failure) => (
+        <p key={failure.clusterId} role="alert" className="error-banner">
+          {`${clusterName(failure.clusterId)} のラベルを生成できませんでした: ${failure.message}`}
+        </p>
+      ))}
+      {cacheError && <p className="lint-unavailable">{cacheError}</p>}
+      <OpinionClustersView result={result} labels={labels} />
+    </>
+  )
+}
+
 /** 埋め込みの結果から、クラスタ数を選べる分析結果の画面を描画します。 */
-function AnalysisResult({ path, comments, embeddings, modelId }: { path: string; comments: Comment[]; embeddings: number[][]; modelId: string }) {
+function AnalysisResult({ path, comments, embeddings, deps, embeddingKey }: { path: string; comments: Comment[]; embeddings: number[][]; deps: OpinionAnalysisDeps; embeddingKey: string }) {
   const [clusterCount, setClusterCount] = useState(Math.min(DEFAULT_CLUSTER_COUNT, comments.length))
   const selectId = useId()
   const result = useMemo(() => clusterOpinions(comments, embeddings, clusterCount), [comments, embeddings, clusterCount])
@@ -84,25 +241,17 @@ function AnalysisResult({ path, comments, embeddings, modelId }: { path: string;
   return (
     <>
       <p className="analysis-toolbar">
-        <label htmlFor={selectId}>クラスタ数</label>{' '}
+        <label htmlFor={selectId}>クラスタ数</label>
         <select id={selectId} value={clusterCount} onChange={(event) => setClusterCount(Number(event.target.value))}>
           {options.map((count) => (
             <option key={count} value={count}>
               {count}
             </option>
           ))}
-        </select>{' '}
-        <button
-          type="button"
-          className="button"
-          onClick={() => downloadJson(serializeClusterJson(result, { modelId, source: path }), `${basename(path).replace(/\.csv$/i, '')}-clusters.json`)}
-        >
-          JSON を書き出す
-        </button>
+        </select>
       </p>
-      <p className="muted">{`埋め込みモデル: ${modelId}。書き出した JSON を raw/ に置くと、モデル無しでこの結果を表示できます。`}</p>
-      {/* クラスタ数を変えたら、選んでいたクラスタの選択を解除します */}
-      <OpinionClustersView key={clusterCount} result={result} />
+      {/* クラスタ数を変えたら、選んでいたクラスタ・生成したラベルを作り直します */}
+      <LabeledClusters key={clusterCount} path={path} result={result} deps={deps} embeddingKey={embeddingKey} />
     </>
   )
 }
@@ -111,15 +260,17 @@ function AnalysisResult({ path, comments, embeddings, modelId }: { path: string;
 function Panel({ deps, path, csvText, comments }: OpinionAnalysisPanelProps & { deps: OpinionAnalysisDeps }) {
   const { embedder, cache } = deps
   const [state, setState] = useState<AnalysisState>({ status: 'checking-cache' })
+  // キャッシュのキー（SHA-256）は、キャッシュの確認と保存の両方で使うため 1 度だけ求めます
+  const embeddingKeyPromise = useMemo(() => analysisCacheKey(csvText, embedder.modelId), [csvText, embedder.modelId])
 
   // 同じ入力の結果がキャッシュにあれば、ボタンを押さなくても表示します
   useEffect(() => {
     let cancelled = false
-    analysisCacheKey(csvText, embedder.modelId)
-      .then((key) => cache.get<CachedEmbeddings>(key))
+    embeddingKeyPromise
+      .then(async (key) => ({ key, cached: await cache.get<CachedEmbeddings>(key) }))
       .then(
-        (cached) => {
-          if (!cancelled) setState(cached ? { status: 'done', embeddings: cached.embeddings, device: null, cacheError: null } : { status: 'idle' })
+        ({ key, cached }) => {
+          if (!cancelled) setState(cached ? { status: 'done', embeddings: cached.embeddings, device: null, cacheError: null, embeddingKey: key } : { status: 'idle' })
         },
         (cause: unknown) => {
           if (!cancelled) setState({ status: 'error', message: `キャッシュを読めませんでした: ${cause instanceof Error ? cause.message : String(cause)}` })
@@ -128,7 +279,7 @@ function Panel({ deps, path, csvText, comments }: OpinionAnalysisPanelProps & { 
     return () => {
       cancelled = true
     }
-  }, [csvText, embedder, cache])
+  }, [embeddingKeyPromise, cache])
 
   const run = async () => {
     setState({ status: 'running', progress: null })
@@ -138,13 +289,14 @@ function Panel({ deps, path, csvText, comments }: OpinionAnalysisPanelProps & { 
         (progress) => setState({ status: 'running', progress }),
       )
       // 時間のかかる埋め込みは終わっているため、キャッシュに保存できなくても結果は表示し、保存できなかったことを示します
+      const embeddingKey = await embeddingKeyPromise
       let cacheError: string | null = null
       try {
-        await cache.set(await analysisCacheKey(csvText, embedder.modelId), { modelId: embedder.modelId, embeddings } satisfies CachedEmbeddings)
+        await cache.set(embeddingKey, { modelId: embedder.modelId, embeddings } satisfies CachedEmbeddings)
       } catch (cause) {
         cacheError = cause instanceof Error ? cause.message : String(cause)
       }
-      setState({ status: 'done', embeddings, device, cacheError })
+      setState({ status: 'done', embeddings, device, cacheError, embeddingKey })
     } catch (cause) {
       setState({ status: 'error', message: cause instanceof Error ? cause.message : String(cause) })
     }
@@ -166,7 +318,7 @@ function Panel({ deps, path, csvText, comments }: OpinionAnalysisPanelProps & { 
         </div>
       )
     case 'running':
-      return <ProgressView progress={state.progress} />
+      return <ProgressView progress={state.progress} preparingLabel="埋め込みモデルを準備しています…" />
     case 'error':
       return (
         <div>
@@ -185,7 +337,7 @@ function Panel({ deps, path, csvText, comments }: OpinionAnalysisPanelProps & { 
             {state.device === null ? '以前に分析した結果（キャッシュ）を表示しています。' : `${DEVICE_LABELS[state.device]} で計算しました。`}
           </p>
           {state.cacheError && <p className="lint-unavailable">{`結果をキャッシュに保存できませんでした（次に開いたときは分析し直します）: ${state.cacheError}`}</p>}
-          <AnalysisResult path={path} comments={comments} embeddings={state.embeddings} modelId={embedder.modelId} />
+          <AnalysisResult path={path} comments={comments} embeddings={state.embeddings} deps={deps} embeddingKey={state.embeddingKey} />
         </>
       )
   }

@@ -51,7 +51,8 @@ export function ClusterJsonFileView({ path, readText }: ClusterJsonFileViewProps
       ) : (
         <>
           <p className="muted">{`${state.data.source} の意見を、埋め込みモデル ${state.data.modelId} で分析した結果です。`}</p>
-          <OpinionClustersView result={state.data.result} />
+          {state.data.labelModelId && <p className="muted">{`クラスタのラベルは LLM ${state.data.labelModelId} が生成した要約です。`}</p>}
+          <OpinionClustersView result={state.data.result} labels={state.data.labels} />
         </>
       )}
     </div>

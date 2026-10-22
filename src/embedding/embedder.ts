@@ -8,6 +8,7 @@
  * - WebGPU が使え、16 ビット浮動小数点数（shader-f16）に対応する環境では fp16 版（約 74 MB）を WebGPU で動かします
  * - それ以外の環境では 8 ビット量子化版（約 37 MB）を WASM で動かします
  */
+import { createWorkerCaller, type DownloadProgress } from '../worker/rpc'
 
 /** 埋め込みモデルの id（Hugging Face のリポジトリ名）です。 */
 export const EMBEDDING_MODEL_ID = 'sirasagi62/ruri-v3-30m-ONNX'
@@ -24,7 +25,7 @@ export type EmbeddingDevice = 'webgpu' | 'wasm'
 /** 埋め込みの進捗です。 */
 export type EmbeddingProgress =
   /** モデルのファイルのダウンロードの進捗です（全ファイルの合計）。 */
-  | { phase: 'download'; loadedBytes: number; totalBytes: number }
+  | DownloadProgress
   /** 埋め込みを終えた意見の件数です。 */
   | { phase: 'embedding'; done: number; total: number }
 
@@ -51,55 +52,16 @@ export interface Embedder {
   embed(texts: string[], onProgress: (progress: EmbeddingProgress) => void): Promise<EmbeddingOutput>
 }
 
-/** Worker に送るメッセージです。 */
-export interface EmbedRequest {
-  id: number
-  texts: string[]
-}
-
-/** Worker から届くメッセージです。 */
-export type EmbedResponse =
-  | { id: number; type: 'progress'; progress: EmbeddingProgress }
-  | { id: number; type: 'result'; output: EmbeddingOutput }
-  | { id: number; type: 'error'; message: string }
-
 /**
  * Web Worker でモデルを動かす埋め込みモデルを作ります。Worker は最初に embed を呼んだときに起動し、以後は使い回します。
  *
  * @returns 埋め込みモデル
  */
 export function createWorkerEmbedder(): Embedder {
-  let worker: Worker | null = null
-  let nextId = 0
+  const call = createWorkerCaller<string[], EmbeddingOutput, EmbeddingProgress>(() => new Worker(new URL('./embedWorker.ts', import.meta.url), { type: 'module' }))
   return {
     modelId: EMBEDDING_MODEL_ID,
     downloadSizeLabel: '約 44 MB（WebGPU で動かす場合は約 80 MB）',
-    embed(texts, onProgress) {
-      worker ??= new Worker(new URL('./embedWorker.ts', import.meta.url), { type: 'module' })
-      const current = worker
-      const id = nextId++
-      return new Promise<EmbeddingOutput>((resolve, reject) => {
-        const handleMessage = (event: MessageEvent<EmbedResponse>) => {
-          const message = event.data
-          if (message.id !== id) return
-          if (message.type === 'progress') {
-            onProgress(message.progress)
-            return
-          }
-          current.removeEventListener('message', handleMessage)
-          current.removeEventListener('error', handleError)
-          if (message.type === 'result') resolve(message.output)
-          else reject(new Error(message.message))
-        }
-        const handleError = (event: ErrorEvent) => {
-          current.removeEventListener('message', handleMessage)
-          current.removeEventListener('error', handleError)
-          reject(new Error(`埋め込みモデルの Worker でエラーが起きました: ${event.message}`))
-        }
-        current.addEventListener('message', handleMessage)
-        current.addEventListener('error', handleError)
-        current.postMessage({ id, texts } satisfies EmbedRequest)
-      })
-    },
+    embed: call,
   }
 }

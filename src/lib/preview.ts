@@ -12,6 +12,7 @@ import { toString } from 'mdast-util-to-string'
 import remarkGfm from 'remark-gfm'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
+import { remarkCallout } from './callout'
 import { createWikilinkOptions, remarkWikilink } from './remarkWikilink'
 import type { WikiIndex } from './wikiIndex'
 
@@ -102,8 +103,12 @@ function buildPreview(index: WikiIndex, path: string, heading: string | undefine
   if (!page) throw new Error(`プレビューするページが索引にありません: ${path}`)
   if (!page.loaded) return { kind: 'unloaded', title: page.title }
 
-  // 本文の描画と同じく wikilink を表示名に変換します（URL は使わないため、Wiki の id は空にします）
-  const processor = unified().use(remarkParse).use(remarkGfm).use(remarkWikilink, createWikilinkOptions(index, path, ''))
+  // 本文の描画と同じく callout を枠に、wikilink を表示名に変換します（URL は使わないため、Wiki の id は空にします）
+  const processor = unified()
+    .use(remarkParse)
+    .use(remarkGfm)
+    .use(remarkCallout)
+    .use(remarkWikilink, createWikilinkOptions(index, path, ''))
   const tree = processor.parse(page.body)
   processor.runSync(tree)
   const nodes = tree.children

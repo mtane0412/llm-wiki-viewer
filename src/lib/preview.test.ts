@@ -89,6 +89,15 @@ describe('previewOf', () => {
     expect(previewOf(index, 'wiki/concepts/mixed.md', '記憶 の使い方')).toMatchObject({ excerpt: '見出しに wikilink を含む節。' })
   })
 
+  it('callout の記法（[!type]）は抜粋に含めず、タイトルと本文だけを含める', () => {
+    const calloutIndex = buildWikiIndex({
+      markdownFiles: [{ path: 'wiki/a.md', content: '---\ntitle: 矛盾のあるページ\n---\n> [!warning] 矛盾\n> 記述が食い違う。' }],
+      unloadedMarkdownPaths: [],
+      assetPaths: [],
+    })
+    expect(previewOf(calloutIndex, 'wiki/a.md', undefined)).toMatchObject({ excerpt: '矛盾 記述が食い違う。' })
+  })
+
   it('長い本文は決まった文字数で切り、末尾に … を付ける', () => {
     const preview = previewOf(index, 'wiki/concepts/long.md', undefined)
     expect(preview.kind === 'page' && preview.excerpt).toBe(`${'あ'.repeat(160)}…`)

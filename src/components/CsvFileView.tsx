@@ -3,15 +3,16 @@
  *
  * CSV の見出し行から形式を判定して、表示を切り替えます。
  * - 投票 CSV（1 列目が participant）: 同じフォルダの意見 CSV と組み合わせて、Polis 風の集計（意見グループと合意点）を表示します
- * - 意見 CSV（comment-id と comment-body の列がある）: 意見の一覧を表示します
+ * - 意見 CSV（comment-id と comment-body の列がある）: 意見の分析（意見クラスタ）のパネルと、意見の一覧を表示します
  * - それ以外: 表として表示します
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CsvFormatError, parseCsv } from '../lib/csv'
-import { isCommentTable } from '../lib/opinions'
+import { isCommentTable, parseCommentTable } from '../lib/opinions'
 import { dirname, isCsvPath } from '../lib/path'
 import { isVoteTable } from '../lib/polis'
 import type { WikiIndex } from '../lib/wikiIndex'
+import { OpinionAnalysisPanel } from './OpinionAnalysisPanel'
 import { VoteAnalysisView, type CommentTable } from './VoteAnalysisView'
 
 /** CsvFileView の引数です。 */
@@ -26,7 +27,7 @@ export interface CsvFileViewProps {
 type LoadState =
   | { status: 'loading'; path: string }
   | { status: 'error'; path: string; message: string }
-  | { status: 'ready'; path: string; rows: string[][]; siblings: SiblingTables }
+  | { status: 'ready'; path: string; text: string; rows: string[][]; siblings: SiblingTables }
 
 /** 投票 CSV と同じフォルダにある CSV の読み込み結果です。 */
 interface SiblingTables {
@@ -42,15 +43,19 @@ const NO_SIBLINGS: SiblingTables = { commentTables: [], unreadable: [] }
 /** 形式の分からない CSV で表示する行数の上限です（大きなファイルで画面が重くならないようにします）。 */
 const MAX_TABLE_ROWS = 200
 
-/** CSV ファイルを読み込んで解析します。形式の誤りはファイルのパスを付けたエラーにします。 */
-async function readCsv(path: string, readText: (path: string) => Promise<string>): Promise<string[][]> {
-  const text = await readText(path)
+/** CSV の文字列を解析します。形式の誤りはファイルのパスを付けたエラーにします。 */
+function parseCsvFile(path: string, text: string): string[][] {
   try {
     return parseCsv(text)
   } catch (cause) {
     if (cause instanceof CsvFormatError) throw new CsvFormatError(`「${path}」: ${cause.message}`)
     throw cause
   }
+}
+
+/** CSV ファイルを読み込んで解析します。 */
+async function readCsv(path: string, readText: (path: string) => Promise<string>): Promise<string[][]> {
+  return parseCsvFile(path, await readText(path))
 }
 
 /**
@@ -112,6 +117,30 @@ function CsvTable({ rows }: { rows: string[][] }) {
   )
 }
 
+/** 意見 CSV の件数と、意見の分析のパネルです。意見 CSV の形式の誤り（comment-id の重複など）は理由を表示します。 */
+function CommentTableSummary({ path, text, rows }: { path: string; text: string; rows: string[][] }) {
+  const parsed = useMemo(() => {
+    try {
+      return { ok: true as const, comments: parseCommentTable(rows) }
+    } catch (cause) {
+      return { ok: false as const, message: cause instanceof Error ? cause.message : String(cause) }
+    }
+  }, [rows])
+  if (!parsed.ok) {
+    return (
+      <p role="alert" className="error-banner">
+        {`意見 CSV として読めません: ${parsed.message}`}
+      </p>
+    )
+  }
+  return (
+    <>
+      <p className="muted">{`意見 CSV（${parsed.comments.length} 件の意見）です。`}</p>
+      <OpinionAnalysisPanel path={path} csvText={text} comments={parsed.comments} />
+    </>
+  )
+}
+
 /** raw/ の CSV ファイルの画面です。 */
 export function CsvFileView({ path, index, readText }: CsvFileViewProps) {
   const [state, setState] = useState<LoadState>({ status: 'loading', path })
@@ -119,13 +148,14 @@ export function CsvFileView({ path, index, readText }: CsvFileViewProps) {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const rows = await readCsv(path, readText)
+      const text = await readText(path)
+      const rows = parseCsvFile(path, text)
       // 投票 CSV だけが、意見の本文を引くために同じフォルダの意見 CSV を必要とします
       const siblings = isVoteTable(rows) ? await readSiblingTables(path, index, readText) : NO_SIBLINGS
-      return { rows, siblings }
+      return { text, rows, siblings }
     })().then(
-      ({ rows, siblings }) => {
-        if (!cancelled) setState({ status: 'ready', path, rows, siblings })
+      ({ text, rows, siblings }) => {
+        if (!cancelled) setState({ status: 'ready', path, text, rows, siblings })
       },
       (cause: unknown) => {
         if (!cancelled) setState({ status: 'error', path, message: cause instanceof Error ? cause.message : String(cause) })
@@ -154,7 +184,7 @@ export function CsvFileView({ path, index, readText }: CsvFileViewProps) {
         </>
       ) : (
         <>
-          {isCommentTable(state.rows) && <p className="muted">{`意見 CSV（${state.rows.length - 1} 件の意見）です。`}</p>}
+          {isCommentTable(state.rows) && <CommentTableSummary path={path} text={state.text} rows={state.rows} />}
           <CsvTable rows={state.rows} />
         </>
       )}

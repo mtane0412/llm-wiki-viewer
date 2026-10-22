@@ -3,10 +3,10 @@
  *
  * LLM が書く wiki 領域と、元資料の raw 領域を分けて表示します。
  * raw/ には数千件の元資料があり得るため、閉じているフォルダの中身は描画しません。
- * raw/ の CSV ファイルは、開いたときに表や投票の集計として表示できるため、Markdown のページと並べて載せます。
+ * raw/ の CSV・JSON ファイルは、開いたときに表・投票の集計・意見クラスタとして表示できるため、Markdown のページと並べて載せます。
  */
 import { useMemo, useState, type ReactNode } from 'react'
-import { basename, isCsvPath } from '../lib/path'
+import { basename, isCsvPath, isJsonPath } from '../lib/path'
 import { formatRoute } from '../lib/route'
 import type { WikiIndex, WikiPage } from '../lib/wikiIndex'
 
@@ -118,8 +118,10 @@ function FolderNode({ folder, vaultId, currentPath }: { folder: TreeFolder; vaul
 export function FileTree({ index, vaultId, currentPath }: FileTreeProps) {
   const wikiTree = useMemo(() => buildTree(index.pages.filter((page) => page.area === 'wiki'), index.wikiRoot), [index])
   const rawTree = useMemo(() => {
-    const csvFiles = index.assetPaths.filter((path) => path.startsWith('raw/') && isCsvPath(path)).map((path) => ({ path, title: basename(path) }))
-    return buildTree([...index.pages.filter((page) => page.area === 'raw'), ...csvFiles], 'raw')
+    const dataFiles = index.assetPaths
+      .filter((path) => path.startsWith('raw/') && (isCsvPath(path) || isJsonPath(path)))
+      .map((path) => ({ path, title: basename(path) }))
+    return buildTree([...index.pages.filter((page) => page.area === 'raw'), ...dataFiles], 'raw')
   }, [index])
   const rawCount = countPages(rawTree)
 

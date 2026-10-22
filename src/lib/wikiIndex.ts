@@ -112,8 +112,8 @@ export interface WikiIndexInput {
   assetPaths: string[]
 }
 
-/** スキーマのファイル名です。 */
-const SCHEMA_FILE_NAME = 'CLAUDE.md'
+/** スキーマのファイル名（小文字）です。大文字小文字を区別しないファイルシステムがあるため、小文字にして比較します。 */
+const SCHEMA_FILE_NAME = 'claude.md'
 
 /** 目次や記録として特別扱いするページのファイル名（小文字・拡張子なし）です。 */
 const SPECIAL_PAGE_NAMES = new Set(['index', 'log', 'overview'])
@@ -329,7 +329,7 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     issues,
     homePath: pickHomePath(pages, wikiRoot, indexPagePath),
     // Wiki ルートが wiki/ のときだけ、選択したフォルダの直下がリポジトリ直下です
-    schema: wikiRoot ? (input.markdownFiles.find((file) => file.path === SCHEMA_FILE_NAME) ?? null) : null,
+    schema: wikiRoot ? (input.markdownFiles.find((file) => file.path.toLowerCase() === SCHEMA_FILE_NAME) ?? null) : null,
     indexPagePath,
     resolve,
   }

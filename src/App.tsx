@@ -144,7 +144,7 @@ export default function App({ deps }: AppProps) {
               </button>
             </div>
             {index?.schema && (
-              <a className="schema-link small" href={formatRoute({ view: 'schema', vaultId: vault.id })} aria-current={route.view === 'schema' ? 'page' : undefined}>
+              <a className="schema-link small" href={formatRoute({ view: 'schema', vaultId: vault.id, heading: undefined })} aria-current={route.view === 'schema' ? 'page' : undefined}>
                 スキーマ（CLAUDE.md）
               </a>
             )}
@@ -262,7 +262,7 @@ function ViewContent({ vault, index, readText, readBlob, route, navigate }: View
       return <CalloutsView index={index} vaultId={vault.id} readBlob={readBlob} />
     case 'schema':
       return index.schema ? (
-        <SchemaView schema={index.schema} index={index} vaultId={vault.id} readBlob={readBlob} />
+        <SchemaView schema={index.schema} index={index} vaultId={vault.id} heading={route.heading} readBlob={readBlob} />
       ) : (
         <p className="notice">この Wiki にはスキーマ（リポジトリ直下の CLAUDE.md）がありません。</p>
       )

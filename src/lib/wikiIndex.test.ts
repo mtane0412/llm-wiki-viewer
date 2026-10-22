@@ -31,6 +31,18 @@ describe('buildWikiIndex', () => {
     expect(index.pageByPath.has('CLAUDE.md')).toBe(false)
   })
 
+  it('スキーマのファイル名の大文字小文字は区別しない', () => {
+    const lower = buildWikiIndex({
+      markdownFiles: [
+        { path: 'claude.md', content: '# 小文字のスキーマ' },
+        { path: 'wiki/index.md', content: '# 目次' },
+      ],
+      unloadedMarkdownPaths: [],
+      assetPaths: [],
+    })
+    expect(lower.schema?.path).toBe('claude.md')
+  })
+
   it('リポジトリ直下の CLAUDE.md を、Wiki のスキーマとして索引に記録する', () => {
     expect(index.schema).toEqual({ path: 'CLAUDE.md', content: '# スキーマ\n[[壊れていても無視される]]' })
   })

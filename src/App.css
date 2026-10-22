@@ -205,6 +205,10 @@
   margin-top: 0.5rem;
 }
 
+.schema-badge {
+  margin-right: 0.5em;
+}
+
 .schema-link {
   display: inline-block;
   margin-top: 0.4rem;

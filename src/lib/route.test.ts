@@ -49,8 +49,10 @@ describe('route', () => {
   })
 
   it('スキーマ（CLAUDE.md）の URL を相互に変換する', () => {
-    expect(formatRoute({ view: 'schema', vaultId: 'v1' })).toBe('#/v1/schema')
-    expect(parseRoute('#/v1/schema')).toEqual({ view: 'schema', vaultId: 'v1' })
+    expect(formatRoute({ view: 'schema', vaultId: 'v1', heading: undefined })).toBe('#/v1/schema')
+    expect(parseRoute('#/v1/schema')).toEqual({ view: 'schema', vaultId: 'v1', heading: undefined })
+    const withHeading = { view: 'schema', vaultId: 'v1', heading: 'ワークフロー' } as const
+    expect(parseRoute(formatRoute(withHeading))).toEqual(withHeading)
   })
 
   it('Wiki だけを指定した URL はその Wiki のホームとして扱う', () => {

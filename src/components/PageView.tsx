@@ -2,14 +2,17 @@
  * Wiki の 1 ページを表示するコンポーネントです。
  *
  * frontmatter のメタ情報（type・tags・updated・sources）、本文、バックリンク、見出しの目次を表示します。
+ * Wiki ルート直下の log.md（作業ログ）は、本文の代わりにタイムラインとして表示します（目次は表示しません）。
  * `[[page#見出し]]` で開いた場合は、その見出しまでスクロールします。
  */
 import { useEffect, useMemo } from 'react'
+import { isLogPage } from '../lib/log'
 import { basename } from '../lib/path'
 import { createWikilinkOptions } from '../lib/remarkWikilink'
 import { formatRoute } from '../lib/route'
 import { extractHeadings } from '../lib/toc'
 import type { WikiIndex, WikiPage } from '../lib/wikiIndex'
+import { LogTimeline } from './LogTimeline'
 import { MarkdownView } from './MarkdownView'
 import { TableOfContents } from './TableOfContents'
 
@@ -40,10 +43,11 @@ function PageLink({ index, vaultId, path }: { index: WikiIndex; vaultId: string;
 /** Wiki の 1 ページです。 */
 export function PageView({ page, index, vaultId, heading, readBlob }: PageViewProps) {
   const backlinks = index.backlinks.get(page.path) ?? []
+  const isLog = page.area === 'wiki' && isLogPage(page.path, index.wikiRoot)
   // 文字列が空の見出し（画像だけの見出しなど）は目次から移動できないため除きます
   const headings = useMemo(
-    () => extractHeadings(page.body, createWikilinkOptions(index, page.path, vaultId)).filter((item) => item.text !== ''),
-    [page.body, page.path, index, vaultId],
+    () => (isLog ? [] : extractHeadings(page.body, createWikilinkOptions(index, page.path, vaultId)).filter((item) => item.text !== '')),
+    [isLog, page.body, page.path, index, vaultId],
   )
 
   useEffect(() => {
@@ -118,7 +122,11 @@ export function PageView({ page, index, vaultId, heading, readBlob }: PageViewPr
           </dl>
         </header>
 
-        <MarkdownView markdown={page.body} index={index} pagePath={page.path} vaultId={vaultId} readBlob={readBlob} />
+        {isLog ? (
+          <LogTimeline markdown={page.body} index={index} pagePath={page.path} vaultId={vaultId} readBlob={readBlob} />
+        ) : (
+          <MarkdownView markdown={page.body} index={index} pagePath={page.path} vaultId={vaultId} readBlob={readBlob} />
+        )}
 
         <section className="backlinks" aria-label="バックリンク">
           <h2>

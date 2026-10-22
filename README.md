@@ -8,6 +8,7 @@ File System Access API でローカルのフォルダを直接読むため、サ
 - Obsidian 形式の wikilink（`[[page]]`・`[[folder/page]]`・`[[page#見出し|表示名]]`・表の中の `[[page\|表示名]]`・`![[画像]]`）の解決と描画
 - frontmatter（`type`・`tags`・`aliases`・`updated`・`sources`）の表示、バックリンク、見出しの目次
 - Lint: 壊れたリンク・未作成ページ（赤リンク）の参照数順の一覧・孤立ページ・`sources` 未記載・frontmatter の YAML エラー
+- `log.md` のタイムライン表示（日付順・操作の種類での絞り込み・形式に合わない見出しの検出）
 - ページ間リンクのグラフ（`type` で色分け）
 - 複数の Wiki の登録・切り替えと横断検索
 - LLM が `wiki/` を更新すると 3 秒以内に自動で反映
@@ -35,7 +36,7 @@ Safari・Firefox では `<input webkitdirectory>` で読み込みます。この
 
 | ディレクトリ | 内容 |
 |---|---|
-| `src/lib` | frontmatter・wikilink の解析、リンクの解決、索引・lint・グラフ・検索（UI に依存しない純粋な関数） |
+| `src/lib` | frontmatter・wikilink・log.md の解析、リンクの解決、索引・lint・グラフ・検索・目次（UI に依存しない純粋な関数） |
 | `src/source` | `WikiSource`（読み込み手段の抽象）と、File System Access API・ファイル一覧の実装、読み込み器、登録の保存 |
 | `src/app` | Wiki の状態管理とハッシュルーティングの React フック |
 | `src/components` | 画面の部品 |

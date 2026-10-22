@@ -2,13 +2,14 @@
  * LLM Wiki Viewer のルートコンポーネントです。
  *
  * 画面構成:
- * - 左: Wiki の切り替え、検索、表示の切り替え（ページ / タグ / Lint / グラフ）、ページ一覧
- * - 右: 選んだ画面（ページ・タグと type の一覧・絞り込んだページ一覧・lint の指摘・グラフ）
+ * - 左: Wiki の切り替え、検索、表示の切り替え（ページ / タグ / 未解決 / Lint / グラフ）、ページ一覧
+ * - 右: 選んだ画面（ページ・タグと type の一覧・絞り込んだページ一覧・未解決の矛盾と問い・lint の指摘・グラフ）
  * Wiki を 1 つも開いていない場合は、スタート画面だけを表示します。
  */
 import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { useHashRoute } from './app/useHashRoute'
 import { useVaults, type AppDeps, type Vault } from './app/useVaults'
+import { CalloutsView } from './components/CalloutsView'
 import { DeferredPageView } from './components/DeferredPageView'
 import { FileTree } from './components/FileTree'
 import { FolderInput } from './components/FolderInput'
@@ -154,6 +155,9 @@ export default function App({ deps }: AppProps) {
           >
             タグ
           </a>
+          <a href={formatRoute({ view: 'callouts', vaultId: vault.id })} aria-current={route.view === 'callouts' ? 'page' : undefined}>
+            未解決
+          </a>
           <a href={formatRoute({ view: 'lint', vaultId: vault.id })} aria-current={route.view === 'lint' ? 'page' : undefined}>
             Lint <span className="count">{issueCount}</span>
           </a>
@@ -244,9 +248,11 @@ interface ViewContentProps {
   navigate: (hash: string) => void
 }
 
-/** 画面の種類（ページ・タグ・lint・グラフ）に応じた表示です。 */
+/** 画面の種類（ページ・タグ・未解決・lint・グラフ）に応じた表示です。 */
 function ViewContent({ vault, index, readText, readBlob, route, navigate }: ViewContentProps) {
   switch (route.view) {
+    case 'callouts':
+      return <CalloutsView index={index} vaultId={vault.id} readBlob={readBlob} />
     case 'tags':
       return <TaxonomyView index={index} vaultId={vault.id} />
     case 'tag':

@@ -7,6 +7,7 @@ import { parseClusterJson } from '../lib/opinionClusters'
 import type { KeyValueStore } from '../source/vaultRegistry'
 import { buildWikiIndex } from '../lib/wikiIndex'
 import { CsvFileView } from './CsvFileView'
+import { OpinionAnalysisPanel } from './OpinionAnalysisPanel'
 
 /** 給食の意見 3 件と公園の意見 2 件の意見 CSV です。 */
 const commentsCsv = [
@@ -81,6 +82,8 @@ describe('意見 CSV の意見の分析', () => {
     expect(within(list).getByText('c1')).toBeInTheDocument()
     expect(within(list).queryByText('公園を増やしたい')).toBeNull()
     expect(screen.getByRole('img', { name: /5 件の意見/ })).toBeInTheDocument()
+    // モデルを動かした手段（WebGPU・WASM）を示します
+    expect(screen.getByText(/WASM で計算しました/)).toBeInTheDocument()
   })
 
   it('同じ内容の意見 CSV は、キャッシュした結果を表示して再計算しない', async () => {
@@ -119,6 +122,42 @@ describe('意見 CSV の意見の分析', () => {
     renderPanel({ embedder, cache: createMemoryStore() })
     await user.click(await screen.findByRole('button', { name: '意見を分析' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('モデルを取得できません')
+  })
+
+  it('結果をキャッシュに保存できなくても結果を表示し、保存できなかったことを示す', async () => {
+    const cache = createMemoryStore()
+    cache.set = vi.fn(async () => {
+      throw new Error('容量が足りません')
+    })
+    const user = userEvent.setup()
+    renderPanel({ embedder: createFakeEmbedder(), cache })
+    await user.click(await screen.findByRole('button', { name: '意見を分析' }))
+    expect(await screen.findByRole('combobox', { name: 'クラスタ数' })).toBeInTheDocument()
+    expect(screen.getByText(/キャッシュに保存できませんでした.*容量が足りません/)).toBeInTheDocument()
+  })
+
+  it('意見 CSV の内容が変わると、前の内容の分析結果を使わずに分析し直せる状態に戻る', async () => {
+    const deps = { embedder: createFakeEmbedder(), cache: createMemoryStore() }
+    const comments = [
+      { id: 'c1', body: '給食を無償にしてほしい', attributes: {} },
+      { id: 'c2', body: '公園を増やしたい', attributes: {} },
+    ]
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <OpinionAnalysisContext.Provider value={deps}>
+        <OpinionAnalysisPanel path={path} csvText="内容 A" comments={comments} />
+      </OpinionAnalysisContext.Provider>,
+    )
+    await user.click(await screen.findByRole('button', { name: '意見を分析' }))
+    await screen.findByRole('combobox', { name: 'クラスタ数' })
+
+    // 前提: LLM が意見 CSV を書き換え、意見が 1 件増えました
+    rerender(
+      <OpinionAnalysisContext.Provider value={deps}>
+        <OpinionAnalysisPanel path={path} csvText="内容 B" comments={[...comments, { id: 'c3', body: '図書館を広くしてほしい', attributes: {} }]} />
+      </OpinionAnalysisContext.Provider>,
+    )
+    expect(await screen.findByRole('button', { name: '意見を分析' })).toBeInTheDocument()
   })
 
   it('結果を JSON で書き出せる', async () => {

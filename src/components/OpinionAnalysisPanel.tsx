@@ -7,7 +7,7 @@
  */
 import { useContext, useEffect, useId, useMemo, useState } from 'react'
 import { OpinionAnalysisContext, type OpinionAnalysisDeps } from '../app/opinionAnalysis'
-import type { EmbeddingProgress } from '../embedding/embedder'
+import type { EmbeddingDevice, EmbeddingProgress } from '../embedding/embedder'
 import { analysisCacheKey, clusterOpinions, serializeClusterJson } from '../lib/opinionClusters'
 import type { Comment } from '../lib/opinions'
 import { basename } from '../lib/path'
@@ -33,13 +33,19 @@ type AnalysisState =
   | { status: 'checking-cache' }
   | { status: 'idle' }
   | { status: 'running'; progress: EmbeddingProgress | null }
-  | { status: 'done'; embeddings: number[][] }
+  /**
+   * device は、モデルを動かした手段です（キャッシュから読んだ場合は null）。
+   * cacheError は、結果をキャッシュに保存できなかった理由です（保存できた・キャッシュから読んだ場合は null）。
+   */
+  | { status: 'done'; embeddings: number[][]; device: EmbeddingDevice | null; cacheError: string | null }
   | { status: 'error'; message: string }
 
 /** 既定のクラスタ数です（意見の件数が少なければ件数にします）。 */
 const DEFAULT_CLUSTER_COUNT = 5
 /** 選べるクラスタ数の上限です。 */
 const MAX_CLUSTER_COUNT = 12
+/** モデルを動かした手段の表示名です。 */
+const DEVICE_LABELS: Record<EmbeddingDevice, string> = { webgpu: 'WebGPU', wasm: 'WASM' }
 /** バイトをメガバイトにする割る数です。 */
 const BYTES_PER_MEGABYTE = 1_000_000
 
@@ -113,7 +119,7 @@ function Panel({ deps, path, csvText, comments }: OpinionAnalysisPanelProps & { 
       .then((key) => cache.get<CachedEmbeddings>(key))
       .then(
         (cached) => {
-          if (!cancelled) setState(cached ? { status: 'done', embeddings: cached.embeddings } : { status: 'idle' })
+          if (!cancelled) setState(cached ? { status: 'done', embeddings: cached.embeddings, device: null, cacheError: null } : { status: 'idle' })
         },
         (cause: unknown) => {
           if (!cancelled) setState({ status: 'error', message: `キャッシュを読めませんでした: ${cause instanceof Error ? cause.message : String(cause)}` })
@@ -127,12 +133,18 @@ function Panel({ deps, path, csvText, comments }: OpinionAnalysisPanelProps & { 
   const run = async () => {
     setState({ status: 'running', progress: null })
     try {
-      const { embeddings } = await embedder.embed(
+      const { embeddings, device } = await embedder.embed(
         comments.map((comment) => comment.body),
         (progress) => setState({ status: 'running', progress }),
       )
-      await cache.set(await analysisCacheKey(csvText, embedder.modelId), { modelId: embedder.modelId, embeddings } satisfies CachedEmbeddings)
-      setState({ status: 'done', embeddings })
+      // 時間のかかる埋め込みは終わっているため、キャッシュに保存できなくても結果は表示し、保存できなかったことを示します
+      let cacheError: string | null = null
+      try {
+        await cache.set(await analysisCacheKey(csvText, embedder.modelId), { modelId: embedder.modelId, embeddings } satisfies CachedEmbeddings)
+      } catch (cause) {
+        cacheError = cause instanceof Error ? cause.message : String(cause)
+      }
+      setState({ status: 'done', embeddings, device, cacheError })
     } catch (cause) {
       setState({ status: 'error', message: cause instanceof Error ? cause.message : String(cause) })
     }
@@ -167,12 +179,21 @@ function Panel({ deps, path, csvText, comments }: OpinionAnalysisPanelProps & { 
         </div>
       )
     case 'done':
-      return <AnalysisResult path={path} comments={comments} embeddings={state.embeddings} modelId={embedder.modelId} />
+      return (
+        <>
+          <p className="muted">
+            {state.device === null ? '以前に分析した結果（キャッシュ）を表示しています。' : `${DEVICE_LABELS[state.device]} で計算しました。`}
+          </p>
+          {state.cacheError && <p className="lint-unavailable">{`結果をキャッシュに保存できませんでした（次に開いたときは分析し直します）: ${state.cacheError}`}</p>}
+          <AnalysisResult path={path} comments={comments} embeddings={state.embeddings} modelId={embedder.modelId} />
+        </>
+      )
   }
 }
 
 /** 意見 CSV の分析パネルです。意見の分析の依存が提供されていない場合は何も表示しません。 */
 export function OpinionAnalysisPanel(props: OpinionAnalysisPanelProps) {
   const deps = useContext(OpinionAnalysisContext)
-  return deps ? <Panel deps={deps} {...props} /> : null
+  // 意見 CSV の内容が変わったら状態を作り直し、前の内容の埋め込みを新しい意見に使わないようにします
+  return deps ? <Panel key={props.csvText} deps={deps} {...props} /> : null
 }

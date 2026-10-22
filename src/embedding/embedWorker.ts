@@ -21,15 +21,19 @@ let loading: Promise<LoadedPipeline> | null = null
 /** WebGPU で fp16 のモデルを動かせるかを調べます。 */
 async function supportsWebGpuFp16(): Promise<boolean> {
   if (!('gpu' in navigator) || !navigator.gpu) return false
-  const adapter = await navigator.gpu.requestAdapter()
-  return adapter?.features.has('shader-f16') ?? false
+  try {
+    const adapter = await navigator.gpu.requestAdapter()
+    return adapter?.features.has('shader-f16') ?? false
+  } catch {
+    // ブラウザやドライバーによっては requestAdapter が例外を投げるため、WebGPU を使えない環境として扱います
+    return false
+  }
 }
 
-/** パイプラインを読み込みます。ダウンロードの進捗は全ファイルの合計にして知らせます。 */
-async function loadPipeline(report: (progress: EmbeddingProgress) => void): Promise<LoadedPipeline> {
-  const device: EmbeddingDevice = (await supportsWebGpuFp16()) ? 'webgpu' : 'wasm'
+/** 指定した手段でパイプラインを作ります。ダウンロードの進捗は全ファイルの合計にして知らせます。 */
+async function createPipeline(device: EmbeddingDevice, report: (progress: EmbeddingProgress) => void): Promise<FeatureExtractionPipeline> {
   const files = new Map<string, { loaded: number; total: number }>()
-  const extractor = await pipeline('feature-extraction', EMBEDDING_MODEL_ID, {
+  return pipeline('feature-extraction', EMBEDDING_MODEL_ID, {
     device,
     dtype: device === 'webgpu' ? 'fp16' : 'q8',
     progress_callback: (info: ProgressInfo) => {
@@ -39,7 +43,21 @@ async function loadPipeline(report: (progress: EmbeddingProgress) => void): Prom
       report({ phase: 'download', loadedBytes: totals.loaded, totalBytes: totals.total })
     },
   })
-  return { extractor, device }
+}
+
+/**
+ * パイプラインを読み込みます。WebGPU で動かせる環境では WebGPU で作り、作れなかった場合は WASM で 1 度だけ作り直します。
+ * どちらで動かしたかは結果の device で画面に返すため、暗黙には切り替わりません。
+ */
+async function loadPipeline(report: (progress: EmbeddingProgress) => void): Promise<LoadedPipeline> {
+  if (await supportsWebGpuFp16()) {
+    try {
+      return { extractor: await createPipeline('webgpu', report), device: 'webgpu' }
+    } catch {
+      // WebGPU の初期化に失敗するドライバーがあるため、WASM で作り直します（WASM でも失敗した場合はその例外を返します）
+    }
+  }
+  return { extractor: await createPipeline('wasm', report), device: 'wasm' }
 }
 
 self.addEventListener('message', (event: MessageEvent<EmbedRequest>) => {

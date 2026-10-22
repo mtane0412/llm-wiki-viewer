@@ -1091,3 +1091,42 @@ a.badge {
     height: 70vh;
   }
 }
+
+/* ---------- 論点マップ ---------- */
+/* 立場の下に、賛成の論拠と反対の論拠を左右に並べます（狭い画面では縦に並べます） */
+.argument-sides {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.5rem 1.5rem;
+  margin-top: 0.4rem;
+}
+
+.argument-side-label {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.argument-side ul {
+  margin: 0.2rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
+}
+
+.lint-list .argument-side li {
+  padding: 0.15rem 0;
+  border-top: 0;
+}
+
+.argument-side .muted {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+}
+
+.argument-sources {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+  margin-left: 0.5rem;
+  font-size: 0.8rem;
+}

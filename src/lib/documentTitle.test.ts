@@ -32,6 +32,7 @@ describe('documentTitle', () => {
     expect(documentTitle({ view: 'recent', vaultId: 'v1' }, vault)).toBe('最近 - 料理の wiki - LLM Wiki Viewer')
     expect(documentTitle({ view: 'callouts', vaultId: 'v1' }, vault)).toBe('未解決 - 料理の wiki - LLM Wiki Viewer')
     expect(documentTitle({ view: 'graph', vaultId: 'v1' }, vault)).toBe('グラフ - 料理の wiki - LLM Wiki Viewer')
+    expect(documentTitle({ view: 'arguments', vaultId: 'v1' }, vault)).toBe('論点マップ - 料理の wiki - LLM Wiki Viewer')
     expect(documentTitle({ view: 'tags', vaultId: 'v1' }, vault)).toBe('タグ - 料理の wiki - LLM Wiki Viewer')
     expect(documentTitle({ view: 'schema', vaultId: 'v1', heading: undefined }, vault)).toBe('スキーマ（CLAUDE.md） - 料理の wiki - LLM Wiki Viewer')
   })

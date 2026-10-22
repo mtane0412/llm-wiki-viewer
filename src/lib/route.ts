@@ -9,6 +9,7 @@
  * - `#/{vaultId}/tags` タグと type の一覧
  * - `#/{vaultId}/callouts` 未解決の矛盾・問い（warning・question の callout）の一覧
  * - `#/{vaultId}/recent` 最近の更新と、前回の閲覧以降に変わったページ
+ * - `#/{vaultId}/arguments` 論点マップ（論点・立場・賛否の論拠の木）
  * - `#/{vaultId}/schema?h={見出し}` リポジトリ直下の CLAUDE.md（Wiki のスキーマ）
  * - `#/{vaultId}/tag/{タグ}` タグを持つページの一覧（タグの中の `/` もエンコードします）
  * - `#/{vaultId}/type/{type}` type が一致するページの一覧
@@ -26,6 +27,7 @@ export type Route =
   | { view: 'tags'; vaultId: string }
   | { view: 'callouts'; vaultId: string }
   | { view: 'recent'; vaultId: string }
+  | { view: 'arguments'; vaultId: string }
   | { view: 'schema'; vaultId: string; heading: string | undefined }
   | { view: 'tag'; vaultId: string; tag: string }
   | { view: 'type'; vaultId: string; type: string }
@@ -60,6 +62,7 @@ export function formatRoute(route: Route): string {
     case 'tags':
     case 'callouts':
     case 'recent':
+    case 'arguments':
       return `#/${encodeURIComponent(route.vaultId)}/${route.view}`
     case 'schema':
       return `#/${encodeURIComponent(route.vaultId)}/schema${headingQuery(route.heading)}`
@@ -89,7 +92,7 @@ export function parseRoute(hash: string): Route {
     const vaultId = decodeURIComponent(segments[0])
     const view = segments[1]
     if (view === undefined) return { view: 'home', vaultId }
-    if (view === 'lint' || view === 'graph' || view === 'tags' || view === 'callouts' || view === 'recent') return { view, vaultId }
+    if (view === 'lint' || view === 'graph' || view === 'tags' || view === 'callouts' || view === 'recent' || view === 'arguments') return { view, vaultId }
     if (view === 'schema') return { view, vaultId, heading: new URLSearchParams(queryPart).get('h') ?? undefined }
     if (view === 'tag' && segments.length === 3) return { view, vaultId, tag: decodeURIComponent(segments[2]) }
     if (view === 'type' && segments.length === 3) return { view, vaultId, type: decodeURIComponent(segments[2]) }

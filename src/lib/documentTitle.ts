@@ -34,6 +34,8 @@ function viewName(route: Exclude<Route, { view: 'start' }>, index: WikiIndex | n
       return '未解決'
     case 'recent':
       return '最近'
+    case 'arguments':
+      return '論点マップ'
     case 'schema':
       return 'スキーマ（CLAUDE.md）'
     case 'tag':

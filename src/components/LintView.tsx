@@ -1,6 +1,7 @@
 /**
  * lint の指摘（壊れたリンク・孤立ページ・sources 未記載・frontmatter エラー・index.md 未掲載・
- * frontmatter の必須項目の欠け・type の値の誤り・取り込まれていない元資料）を一覧表示するコンポーネントです。
+ * frontmatter の必須項目の欠け・type の値の誤り・取り込まれていない元資料・論点マップの関係の誤りと欠け・議論の偏り・
+ * sources の無い論拠）を一覧表示するコンポーネントです。
  * 壊れたリンクは、未作成のリンク先ごとに参照数の多い順に並べた「未作成ページ（赤リンク）」としても表示します。
  *
  * LLM Wiki の Lint 操作で LLM に直させる前に、人が全体の健全性を確認するための画面です。
@@ -59,6 +60,22 @@ const SECTIONS: {
     description:
       'raw/ の元資料（Markdown 以外のファイルを含む）のうち、どの wiki ページの本文のリンク・埋め込みや sources からも参照されていないものです。要約の過程で取りこぼした資料がないかを確かめるために使います（raw のファイルどうしのリンクは参照に数えません）。',
   },
+  {
+    kind: 'invalid-relation',
+    title: '論点マップの関係の誤り',
+    description: '立場の issue のリンク先が論点（type: issue）でないか、論拠の supports・opposes のリンク先が立場（type: position）でない関係です。リンク先が無い場合も含みます。',
+  },
+  {
+    kind: 'missing-relation',
+    title: '論点マップの関係の欠け',
+    description: 'issue の無い立場（type: position）と、supports・opposes のどちらも無い論拠（type: argument）です。論点マップに表示されません。',
+  },
+  {
+    kind: 'one-sided-position',
+    title: '議論の偏り',
+    description: '賛成の論拠と反対の論拠の片方にしか論拠が無い立場です（論拠がまだ 1 つも無い立場を除く）。',
+  },
+  { kind: 'unsourced-argument', title: 'sources の無い論拠', description: 'frontmatter の sources が空の論拠（type: argument）です。' },
 ]
 
 /** 指摘の詳細（リンク先・エラーの内容・欠けた項目など）を描画します。ページだけで分かる指摘では何も描画しません。 */
@@ -80,10 +97,22 @@ function IssueDetail({ issue }: { issue: LintIssue }) {
       )
     case 'invalid-type':
       return <code className="lint-target">{issue.type}</code>
+    case 'invalid-relation':
+      return (
+        <>
+          <code className="lint-target">{`${issue.key}: ${issue.target}`}</code>
+          <span className="muted">{issue.actualType === null ? 'リンク先が無い' : issue.actualType === undefined ? 'リンク先に type が無い' : `リンク先の type: ${issue.actualType}`}</span>
+        </>
+      )
+    case 'missing-relation':
+      return <code className="lint-target">{issue.key === 'issue' ? 'issue' : 'supports・opposes'}</code>
+    case 'one-sided-position':
+      return <span className="muted">{issue.missing === 'opposes' ? '反対の論拠が無い' : '賛成の論拠が無い'}</span>
     case 'orphan':
     case 'missing-sources':
     case 'not-in-index':
     case 'unreferenced-raw':
+    case 'unsourced-argument':
       return null
     default: {
       const exhaustive: never = issue

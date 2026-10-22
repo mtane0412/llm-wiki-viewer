@@ -15,6 +15,7 @@ import { useSeenPages, type SeenPagesState } from './app/useSeenPages'
 import { useVaults, type AppDeps, type Vault } from './app/useVaults'
 import { ArgumentMapView } from './components/ArgumentMapView'
 import { CalloutsView } from './components/CalloutsView'
+import { CsvFileView } from './components/CsvFileView'
 import { DeferredPageView } from './components/DeferredPageView'
 import { FileTree } from './components/FileTree'
 import { FolderInput } from './components/FolderInput'
@@ -26,6 +27,7 @@ import { SearchResults, type VaultSearchResult } from './components/SearchResult
 import { StartView } from './components/StartView'
 import { PagesByTagView, PagesByTypeView, TaxonomyView } from './components/TaxonomyView'
 import { documentTitle } from './lib/documentTitle'
+import { isCsvPath } from './lib/path'
 import { formatRoute, type Route } from './lib/route'
 import { searchPages } from './lib/search'
 import type { WikiIndex } from './lib/wikiIndex'
@@ -364,6 +366,10 @@ function ViewContent({ vault, index, readText, readBlob, route, navigate, seenPa
       )
     case 'page': {
       const page = index.pageByPath.get(route.path)
+      // raw/ の CSV ファイルは Markdown のページではないため、表や投票の集計として表示します
+      if (!page && isCsvPath(route.path) && index.assetPaths.includes(route.path)) {
+        return <CsvFileView path={route.path} index={index} readText={readText} />
+      }
       if (!page) {
         return (
           <div className="notice">

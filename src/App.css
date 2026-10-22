@@ -173,6 +173,36 @@
   background: var(--surface);
 }
 
+/* display: flex が hidden 属性の既定の非表示を上書きしないようにします */
+.sidebar[hidden] {
+  display: none;
+}
+
+.layout-sidebar-closed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* 本文の左上に置く、サイドバーの開閉ボタンです */
+.sidebar-toggle {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sidebar-toggle:hover {
+  color: var(--text);
+}
+
 .sidebar-header {
   padding: 1rem 1rem 0.5rem;
 }
@@ -401,6 +431,7 @@ details[open] > summary::before {
 
 /* ---------- 本文 ---------- */
 .content {
+  position: relative;
   min-width: 0;
   padding: 2.5rem 3rem 6rem;
 }
@@ -1083,8 +1114,9 @@ a.badge {
     border-bottom: 1px solid var(--border);
   }
 
+  /* 上の余白は、左上のサイドバーの開閉ボタンと本文が重ならない高さにします */
   .content {
-    padding: 1.5rem 16px 4rem;
+    padding: 3rem 16px 4rem;
   }
 
   .graph {

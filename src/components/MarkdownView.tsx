@@ -9,8 +9,8 @@
 import { useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 import Markdown, { type Components, type Options } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { basename, dirname, joinPath } from '../lib/path'
-import { EMBED_CLASS, remarkWikilink } from '../lib/remarkWikilink'
+import { dirname, joinPath } from '../lib/path'
+import { createWikilinkOptions, EMBED_CLASS, remarkWikilink } from '../lib/remarkWikilink'
 import { formatRoute } from '../lib/route'
 import type { WikiIndex } from '../lib/wikiIndex'
 
@@ -91,17 +91,7 @@ function heading(Tag: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6') {
 /** Wiki のページ本文を描画します。 */
 export function MarkdownView({ markdown, index, pagePath, vaultId, readBlob }: MarkdownViewProps) {
   const remarkPlugins = useMemo<NonNullable<Options['remarkPlugins']>>(
-    () => [
-      remarkGfm,
-      [
-        remarkWikilink,
-        {
-          resolve: (target: string) => index.resolve(target, pagePath),
-          titleOf: (path: string) => index.pageByPath.get(path)?.title ?? basename(path),
-          hrefOf: (path: string, heading: string | undefined) => formatRoute({ view: 'page', vaultId, path, heading }),
-        },
-      ],
-    ],
+    () => [remarkGfm, [remarkWikilink, createWikilinkOptions(index, pagePath, vaultId)]],
     [index, pagePath, vaultId],
   )
 

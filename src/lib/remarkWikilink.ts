@@ -7,6 +7,8 @@
 import type { Root, PhrasingContent } from 'mdast'
 import { findAndReplace } from 'mdast-util-find-and-replace'
 import { basename } from './path'
+import { formatRoute } from './route'
+import type { WikiIndex } from './wikiIndex'
 import { parseWikilink } from './wikilink'
 
 /** 埋め込みのうち画像として表示する拡張子です。 */
@@ -24,6 +26,24 @@ export interface RemarkWikilinkOptions {
 
 /** 埋め込み画像に付けるクラス名です。画像の src が Wiki フォルダからのパスであることを示します。 */
 export const EMBED_CLASS = 'wikilink-embed'
+
+/**
+ * Wiki の索引を使って、あるページの本文に含まれる wikilink の解決方法を作ります。
+ *
+ * 本文の描画と目次の抽出で同じ設定を使い、見出しの中の wikilink の表示名を揃えるための関数です。
+ *
+ * @param index - Wiki の索引
+ * @param pagePath - wikilink を含むページのパス（相対リンクの基準）
+ * @param vaultId - リンクの URL に使う Wiki の id
+ * @returns remarkWikilink の設定
+ */
+export function createWikilinkOptions(index: WikiIndex, pagePath: string, vaultId: string): RemarkWikilinkOptions {
+  return {
+    resolve: (target) => index.resolve(target, pagePath),
+    titleOf: (path) => index.pageByPath.get(path)?.title ?? basename(path),
+    hrefOf: (path, heading) => formatRoute({ view: 'page', vaultId, path, heading }),
+  }
+}
 
 /**
  * wikilink を変換する remark プラグインです。

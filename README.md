@@ -6,7 +6,7 @@ File System Access API でローカルのフォルダを直接読むため、サ
 ## 機能
 
 - Obsidian 形式の wikilink（`[[page]]`・`[[folder/page]]`・`[[page#見出し|表示名]]`・表の中の `[[page\|表示名]]`・`![[画像]]`）の解決と描画
-- frontmatter（`type`・`tags`・`aliases`・`updated`・`sources`）の表示、バックリンク
+- frontmatter（`type`・`tags`・`aliases`・`updated`・`sources`）の表示、バックリンク、見出しの目次
 - Lint: 壊れたリンク・孤立ページ・`sources` 未記載・frontmatter の YAML エラー
 - ページ間リンクのグラフ（`type` で色分け）
 - 複数の Wiki の登録・切り替えと横断検索

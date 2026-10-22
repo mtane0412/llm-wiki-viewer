@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildWikiIndex } from '../lib/wikiIndex'
 import { PageView } from './PageView'
@@ -62,6 +63,16 @@ describe('PageView の目次', () => {
     const toc = screen.getByRole('navigation', { name: '目次' })
     expect(within(toc).getByRole('link', { name: '点検（lint）' })).toHaveAttribute('aria-current', 'location')
     expect(within(toc).getByRole('link', { name: '要約の作り方' })).not.toHaveAttribute('aria-current')
+  })
+
+  it('表示中の見出しの項目をもう一度押すと、URL が変わらなくてもその見出しへスクロールする', async () => {
+    renderPage('wiki/concepts/llm-wiki.md', '点検（lint）')
+    // 前提: 最初の表示で見出しへスクロールした記録を消し、読者が手で別の位置へスクロールした状態にします
+    vi.mocked(Element.prototype.scrollIntoView).mockClear()
+    const toc = screen.getByRole('navigation', { name: '目次' })
+    await userEvent.click(within(toc).getByRole('link', { name: '点検（lint）' }))
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(Element.prototype.scrollIntoView).mock.contexts[0]).toBe(document.getElementById('点検（lint）'))
   })
 
   it('見出しが無いページでは目次を表示しない', () => {

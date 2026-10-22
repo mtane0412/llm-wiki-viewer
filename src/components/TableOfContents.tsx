@@ -42,6 +42,10 @@ export function TableOfContents({ headings, vaultId, pagePath, currentHeading }:
               <a
                 href={formatRoute({ view: 'page', vaultId, path: pagePath, heading: heading.text })}
                 aria-current={heading.text === currentHeading ? 'location' : undefined}
+                onClick={() => {
+                  // 表示中の見出しを指す項目では URL が変わらず PageView のスクロールが動かないため、ここでスクロールします
+                  if (heading.text === currentHeading) document.getElementById(heading.text)?.scrollIntoView({ block: 'start' })
+                }}
               >
                 {heading.text}
               </a>

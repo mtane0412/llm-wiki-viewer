@@ -30,3 +30,42 @@ describe('LintView の未作成ページ（赤リンク）', () => {
     expect(within(section).getByRole('link', { name: 'index' })).toHaveAttribute('href', '#/v1/page/wiki/index.md')
   })
 })
+
+describe('LintView の index.md 未掲載', () => {
+  it('index.md からリンクされていないページを表示する', () => {
+    render(<LintView index={index} vaultId="v1" />)
+    const section = screen.getByRole('region', { name: /index\.md 未掲載/ })
+    // 前提: index.md は agent にリンクしているため、未掲載のページはありません
+    expect(within(section).getByText('指摘はありません。')).toBeInTheDocument()
+  })
+
+  it('index.md が無い Wiki では、判定できないことを明示する', () => {
+    const noIndex = buildWikiIndex({
+      markdownFiles: [{ path: 'wiki/concepts/agent.md', content: '---\ntitle: エージェント\n---\n本文' }],
+      unloadedMarkdownPaths: [],
+      assetPaths: [],
+    })
+    render(<LintView index={noIndex} vaultId="v1" />)
+    const section = screen.getByRole('region', { name: /index\.md 未掲載/ })
+    expect(within(section).getByText(/index\.md が見つからないため、判定していません/)).toBeInTheDocument()
+    expect(within(section).queryByText('指摘はありません。')).toBeNull()
+    // 判定していない区画では、件数を 0 と表示しません
+    expect(within(section).getByRole('heading', { level: 2 })).toHaveTextContent('index.md 未掲載 —')
+  })
+
+  it('未掲載のページへ移動できる', () => {
+    const partial = buildWikiIndex({
+      markdownFiles: [
+        { path: 'wiki/index.md', content: '[[concepts/agent]]' },
+        { path: 'wiki/concepts/agent.md', content: '[[concepts/memory]]' },
+        { path: 'wiki/overview.md', content: '[[concepts/memory]]' },
+        { path: 'wiki/concepts/memory.md', content: '---\ntitle: 記憶\n---\n本文' },
+      ],
+      unloadedMarkdownPaths: [],
+      assetPaths: [],
+    })
+    render(<LintView index={partial} vaultId="v1" />)
+    const section = screen.getByRole('region', { name: /index\.md 未掲載/ })
+    expect(within(section).getByRole('link', { name: '記憶' })).toHaveAttribute('href', '#/v1/page/wiki/concepts/memory.md')
+  })
+})

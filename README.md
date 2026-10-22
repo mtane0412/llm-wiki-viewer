@@ -14,6 +14,7 @@ File System Access API でローカルのフォルダを直接読むため、サ
 - タグ・`type` の一覧（件数付き）と、タグ・`type` で絞り込んだページの一覧（URL で共有・再読み込みできます）
 - Obsidian 形式の callout（`> [!warning] 矛盾` など）の描画と、Wiki 全体の「未解決の矛盾・問い」（warning・question）の一覧
 - リポジトリ直下の `CLAUDE.md`（Wiki のスキーマ）の表示（変更も自動で反映）
+- 最近の更新（`updated` の新しい順）と、前回の閲覧以降に内容が変わったページ・新しいページの表示（既読の記録は Wiki ごとに IndexedDB に保存）
 - ページ間リンクのグラフ（`type` で色分け）
 - 複数の Wiki の登録・切り替えと横断検索
 - LLM が `wiki/` を更新すると 3 秒以内に自動で反映

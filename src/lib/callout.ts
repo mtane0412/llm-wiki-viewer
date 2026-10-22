@@ -34,7 +34,7 @@ const CALLOUT_ALIASES: Record<string, string> = {
 }
 
 /** 見た目（色・アイコン）を定めている callout の種類です。これ以外は既定の見た目で描画します。 */
-export const KNOWN_CALLOUT_TYPES = new Set([
+const KNOWN_CALLOUT_TYPES = new Set([
   'note',
   'abstract',
   'info',
@@ -50,6 +50,9 @@ export const KNOWN_CALLOUT_TYPES = new Set([
   'quote',
 ])
 
+/** callout を取り出すための Markdown の解析器です（GFM の表などの中の callout の記法を本文と区別するため GFM を含めます）。 */
+const parser = unified().use(remarkParse).use(remarkGfm)
+
 /** callout の先頭行の `[!type]` と折りたたみの記号（+ / -）です。 */
 const MARKER = /^\[!([^\]\s]+)\][+-]?[ \t]*/
 
@@ -57,8 +60,6 @@ const MARKER = /^\[!([^\]\s]+)\][+-]?[ \t]*/
 export interface CalloutMarker {
   /** 正規の種類（小文字・別名は正規の名前に変換済み）です。 */
   type: string
-  /** 書かれたままの種類です。 */
-  rawType: string
   /** タイトルです。省略された場合は種類の名前（先頭を大文字）です。 */
   title: string
 }
@@ -96,11 +97,16 @@ function defaultTitle(rawType: string): string {
  * @returns 種類とタイトル。callout の記法でなければ null
  */
 export function parseCalloutMarker(line: string): CalloutMarker | null {
+  return matchMarker(line)?.marker ?? null
+}
+
+/** 文字列の先頭の `[!type]` を解析し、種類・タイトルと、`[!type]` の部分の文字数を返します。 */
+function matchMarker(line: string): { marker: CalloutMarker; length: number } | null {
   const match = MARKER.exec(line)
   if (!match) return null
   const rawType = match[1]
   const title = line.slice(match[0].length).trim()
-  return { type: canonicalType(rawType), rawType, title: title || defaultTitle(rawType) }
+  return { marker: { type: canonicalType(rawType), title: title || defaultTitle(rawType) }, length: match[0].length }
 }
 
 /** 引用ブロックを callout として分解した結果です。 */
@@ -123,12 +129,12 @@ function splitCallout(node: Blockquote): CalloutParts | null {
   if (first?.type !== 'paragraph') return null
   const [head, ...restInline] = first.children
   if (head?.type !== 'text') return null
-  const firstLine = head.value.split('\n')[0]
-  const marker = parseCalloutMarker(firstLine)
-  if (!marker) return null
+  const matched = matchMarker(head.value.split('\n')[0])
+  if (!matched) return null
+  const { marker } = matched
 
   // 先頭のテキストから `[!type]` を除き、最初の改行の位置でタイトルと本文の行に分けます
-  const afterMarker: Text = { type: 'text', value: head.value.slice((MARKER.exec(head.value)?.[0] ?? '').length) }
+  const afterMarker: Text = { type: 'text', value: head.value.slice(matched.length) }
   const titleNodes: PhrasingContent[] = []
   const restLineNodes: PhrasingContent[] = []
   let inTitle = true
@@ -163,6 +169,8 @@ function splitCallout(node: Blockquote): CalloutParts | null {
 export function remarkCallout() {
   return (tree: Root) => {
     visit(tree, 'blockquote', (node) => {
+      // 変換で作った本文の要素（callout-content）は callout の判定から外します。中の入れ子の引用は引き続きたどります
+      if (node.data?.hName) return
       const parts = splitCallout(node)
       if (!parts) return
       const { type } = parts.marker
@@ -190,13 +198,17 @@ export function remarkCallout() {
  * @returns callout の種類・タイトル・本文の文字列（コードブロックの中は含みません）
  */
 export function extractCallouts(markdown: string): ExtractedCallout[] {
-  const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown)
+  // callout を含まない大半のページは、構文木を作らずに済ませます
+  if (!markdown.includes('[!')) return []
+  const tree = parser.parse(markdown)
   const callouts: ExtractedCallout[] = []
   visit(tree, 'blockquote', (node) => {
     const parts = splitCallout(node)
     if (!parts) return
     const title = parts.titleNodes.map((child) => toString(child)).join('').trim() || parts.marker.title
+    // 入れ子の callout は別の項目として取り出すため、親の本文には含めません
     const text = parts.bodyNodes
+      .filter((child) => child.type !== 'blockquote' || splitCallout(child) === null)
       .map((child) => toString(child))
       .join(' ')
       .replace(/\s+/g, ' ')

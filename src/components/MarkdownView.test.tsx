@@ -115,6 +115,17 @@ describe('MarkdownView', () => {
     expect(callout?.querySelector('.callout-title')).toHaveTextContent('検証待ち')
   })
 
+  it('callout の 2 行目に書いた [!type] は、入れ子の callout にせず本文として描画する', () => {
+    const { container } = renderMarkdownWithContainer('> [!note] 親\n> [!warning] 本文の行')
+    expect(container.querySelectorAll('.callout')).toHaveLength(1)
+    expect(container.querySelector('.callout-content')).toHaveTextContent('[!warning] 本文の行')
+  })
+
+  it('引用を重ねた入れ子の callout は、それぞれ枠として描画する', () => {
+    const { container } = renderMarkdownWithContainer('> [!note] 親\n>\n> > [!warning] 子\n> > 子の本文')
+    expect(container.querySelector('[data-callout="note"] [data-callout="warning"] .callout-title')).toHaveTextContent('子')
+  })
+
   it('callout の記法ではない引用はそのまま引用として描画する', () => {
     const { container } = renderMarkdownWithContainer('> ふつうの引用')
     expect(container.querySelector('blockquote')).toHaveTextContent('ふつうの引用')

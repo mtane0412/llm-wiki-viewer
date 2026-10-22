@@ -252,7 +252,7 @@ interface ViewContentProps {
 function ViewContent({ vault, index, readText, readBlob, route, navigate }: ViewContentProps) {
   switch (route.view) {
     case 'callouts':
-      return <CalloutsView index={index} vaultId={vault.id} />
+      return <CalloutsView index={index} vaultId={vault.id} readBlob={readBlob} />
     case 'tags':
       return <TaxonomyView index={index} vaultId={vault.id} />
     case 'tag':

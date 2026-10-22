@@ -214,7 +214,7 @@
 
 .view-tabs a {
   flex: 1 0 auto;
-  padding: 0.3em 0;
+  padding: 0.3em 0.5em;
   border-radius: 6px;
   color: var(--muted);
   font-size: 0.87rem;
@@ -514,16 +514,14 @@ a.badge {
 }
 
 .callout-title {
-  display: flex;
-  align-items: baseline;
-  gap: 0.45rem;
   color: var(--callout-color);
   font-weight: 600;
 }
 
+/* タイトルの中の強調やリンクを通常の文として並べるため、アイコンは行頭の疑似要素にします */
 .callout-title::before {
+  margin-right: 0.45rem;
   content: var(--callout-icon);
-  flex: none;
 }
 
 .callout-content > :first-child {
@@ -884,8 +882,12 @@ a.badge {
 }
 
 .callout-mention-text {
-  margin: 0.25rem 0 0;
+  margin-top: 0.25rem;
   font-size: 0.9rem;
+}
+
+.callout-mention-text p {
+  margin: 0;
 }
 
 .lint-ok {

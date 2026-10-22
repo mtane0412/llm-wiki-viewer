@@ -4,7 +4,7 @@ import { buildWikiIndex } from './wikiIndex'
 
 describe('parseCalloutMarker', () => {
   it('callout の種類とタイトルを取り出し、種類は小文字にする', () => {
-    expect(parseCalloutMarker('[!WARNING] 矛盾')).toEqual({ type: 'warning', rawType: 'WARNING', title: '矛盾' })
+    expect(parseCalloutMarker('[!WARNING] 矛盾')).toEqual({ type: 'warning', title: '矛盾' })
   })
 
   it('Obsidian の別名は正規の種類にまとめる', () => {
@@ -14,15 +14,15 @@ describe('parseCalloutMarker', () => {
   })
 
   it('未知の種類はそのまま小文字で返す', () => {
-    expect(parseCalloutMarker('[!仮説] 検証待ち')).toEqual({ type: '仮説', rawType: '仮説', title: '検証待ち' })
+    expect(parseCalloutMarker('[!仮説] 検証待ち')).toEqual({ type: '仮説', title: '検証待ち' })
   })
 
   it('タイトルが無ければ、種類の名前をタイトルにする', () => {
-    expect(parseCalloutMarker('[!question]')).toEqual({ type: 'question', rawType: 'question', title: 'Question' })
+    expect(parseCalloutMarker('[!question]')).toEqual({ type: 'question', title: 'Question' })
   })
 
   it('折りたたみの記号（+ / -）はタイトルに含めない', () => {
-    expect(parseCalloutMarker('[!note]- 補足')).toEqual({ type: 'note', rawType: 'note', title: '補足' })
+    expect(parseCalloutMarker('[!note]- 補足')).toEqual({ type: 'note', title: '補足' })
   })
 
   it('callout の記法でなければ null を返す', () => {
@@ -49,6 +49,18 @@ describe('extractCallouts', () => {
       { type: 'warning', title: '矛盾', text: '[[source-a]] では X、[[source-b]] では Y とされている。 未解決。' },
       { type: 'question', title: '未確認', text: '推測による記述。' },
     ])
+  })
+
+  it('入れ子の callout は別々に取り出し、親の本文には子の本文を含めない', () => {
+    const markdown = '> [!note] 親\n> 親の本文\n>\n> > [!warning] 子\n> > 子の本文'
+    expect(extractCallouts(markdown)).toEqual([
+      { type: 'note', title: '親', text: '親の本文' },
+      { type: 'warning', title: '子', text: '子の本文' },
+    ])
+  })
+
+  it('callout の 2 行目に書いた [!type] は、入れ子ではなく本文として扱う', () => {
+    expect(extractCallouts('> [!note] 親\n> [!warning] 本文の行')).toEqual([{ type: 'note', title: '親', text: '[!warning] 本文の行' }])
   })
 
   it('コードブロックの中の callout の記法は取り出さない', () => {

@@ -3,34 +3,46 @@
  *
  * LLM Wiki のスキーマでは、ソース間の矛盾を `> [!warning] 矛盾`、推測を `> [!question] 未確認` の callout で書きます。
  * それらをページごとに集め、矛盾と未確認の区画に分けて、ページへのリンクと本文の抜粋を並べます。
+ * 抜粋は Markdown として描画するため、根拠のソースへの wikilink から直接移動できます。
  */
 import { useId, useMemo } from 'react'
 import { collectCallouts, type CalloutMention } from '../lib/callout'
 import { formatRoute } from '../lib/route'
 import type { WikiIndex } from '../lib/wikiIndex'
+import { MarkdownView } from './MarkdownView'
 
 /** CalloutsView の引数です。 */
 export interface CalloutsViewProps {
   index: WikiIndex
   vaultId: string
+  readBlob: (path: string) => Promise<Blob>
 }
 
 /** 一覧に載せる callout の種類と、区画の見出し・説明です。 */
 const SECTIONS = [
-  { type: 'warning', title: '矛盾', description: 'ソース間の矛盾を示す callout（> [!warning]）です。' },
-  { type: 'question', title: '未確認', description: '推測や未確認の事項を示す callout（> [!question]）です。' },
+  {
+    type: 'warning',
+    title: '矛盾',
+    description: 'ソース間の矛盾を示す warning の callout（> [!warning]。別名の caution・attention を含みます）です。',
+  },
+  {
+    type: 'question',
+    title: '未確認',
+    description: '推測や未確認の事項を示す question の callout（> [!question]。別名の help・faq を含みます）です。',
+  },
 ] as const
 
 /** 一覧に載せる callout の種類です。 */
 const LISTED_CALLOUT_TYPES: string[] = SECTIONS.map((section) => section.type)
 
 /** callout の区画です。 */
-function CalloutSection({ title, description, mentions, index, vaultId }: {
+function CalloutSection({ title, description, mentions, index, vaultId, readBlob }: {
   title: string
   description: string
   mentions: CalloutMention[]
   index: WikiIndex
   vaultId: string
+  readBlob: (path: string) => Promise<Blob>
 }) {
   const headingId = useId()
   return (
@@ -49,7 +61,11 @@ function CalloutSection({ title, description, mentions, index, vaultId }: {
                 {index.pageByPath.get(mention.pagePath)?.title ?? mention.pagePath}
               </a>
               <span className="muted callout-mention-title">{mention.title}</span>
-              {mention.text && <p className="callout-mention-text">{mention.text}</p>}
+              {mention.text && (
+                <div className="callout-mention-text">
+                  <MarkdownView markdown={mention.text} index={index} pagePath={mention.pagePath} vaultId={vaultId} readBlob={readBlob} />
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -59,7 +75,7 @@ function CalloutSection({ title, description, mentions, index, vaultId }: {
 }
 
 /** 未解決の矛盾・問いの一覧です。 */
-export function CalloutsView({ index, vaultId }: CalloutsViewProps) {
+export function CalloutsView({ index, vaultId, readBlob }: CalloutsViewProps) {
   const mentions = useMemo(() => collectCallouts(index.pages, LISTED_CALLOUT_TYPES), [index.pages])
   return (
     <div className="lint">
@@ -72,6 +88,7 @@ export function CalloutsView({ index, vaultId }: CalloutsViewProps) {
           mentions={mentions.filter((mention) => mention.type === section.type)}
           index={index}
           vaultId={vaultId}
+          readBlob={readBlob}
         />
       ))}
     </div>

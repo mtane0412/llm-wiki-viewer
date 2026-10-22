@@ -119,6 +119,21 @@ describe('App', () => {
     expect(within(orphans).getByRole('link', { name: '孤立した概念' })).toBeInTheDocument()
   })
 
+  it('リポジトリ直下の CLAUDE.md をサイドバーからスキーマとして表示する', async () => {
+    const { user } = renderApp({ pick: [createFakeFileSystem('agent-wiki', agentWiki).root] })
+    await user.click(await screen.findByRole('button', { name: 'Wiki フォルダを開く' }))
+    await user.click(await screen.findByRole('link', { name: 'スキーマ（CLAUDE.md）' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'スキーマ' })).toBeInTheDocument()
+    expect(window.location.hash).toMatch(/\/schema$/)
+  })
+
+  it('CLAUDE.md が無い Wiki では、スキーマへのリンクを表示しない', async () => {
+    const { user } = renderApp({ pick: [createFakeFileSystem('cooking-wiki', cookingWiki).root] })
+    await user.click(await screen.findByRole('button', { name: 'Wiki フォルダを開く' }))
+    await screen.findByRole('heading', { level: 1, name: '料理の目次' })
+    expect(screen.queryByRole('link', { name: 'スキーマ（CLAUDE.md）' })).toBeNull()
+  })
+
   it('グラフ画面に Wiki のページをノードとして渡す', async () => {
     const { user } = renderApp({ pick: [createFakeFileSystem('agent-wiki', agentWiki).root] })
     await user.click(await screen.findByRole('button', { name: 'Wiki フォルダを開く' }))

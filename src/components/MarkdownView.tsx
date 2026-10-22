@@ -26,6 +26,11 @@ export interface MarkdownViewProps {
   vaultId: string
   /** フォルダ内のファイルを読み込む関数です。 */
   readBlob: (path: string) => Promise<Blob>
+  /**
+   * 本文の中の見出しへのリンク（`[見出し](#見出し)`）の URL を作ります。
+   * 省略した場合は、pagePath のページの見出しを指す URL にします。索引のページではない文書（スキーマ）を表示するときに指定します。
+   */
+  selfHref?: (heading: string | undefined) => string
 }
 
 /** 外部の URL（スキームつき）かどうかを判定する正規表現です。 */
@@ -91,7 +96,7 @@ function heading(Tag: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6') {
 }
 
 /** Wiki のページ本文を描画します。 */
-export function MarkdownView({ markdown, index, pagePath, vaultId, readBlob }: MarkdownViewProps) {
+export function MarkdownView({ markdown, index, pagePath, vaultId, readBlob, selfHref }: MarkdownViewProps) {
   const remarkPlugins = useMemo<NonNullable<Options['remarkPlugins']>>(
     () => [remarkGfm, remarkCallout, [remarkWikilink, createWikilinkOptions(index, pagePath, vaultId)]],
     [index, pagePath, vaultId],
@@ -101,7 +106,10 @@ export function MarkdownView({ markdown, index, pagePath, vaultId, readBlob }: M
     /** 相対パスのリンクを Wiki 内のページへのリンクに変換します。変換できなければ null です。 */
     const toInternalHref = (href: string): string | null => {
       const [rawPath, fragment] = safeDecode(href).split('#')
-      if (!rawPath) return formatRoute({ view: 'page', vaultId, path: pagePath, heading: fragment || undefined })
+      if (!rawPath) {
+        const heading = fragment || undefined
+        return selfHref ? selfHref(heading) : formatRoute({ view: 'page', vaultId, path: pagePath, heading })
+      }
       const joined = joinPath(dirname(pagePath), rawPath)
       const path = joined !== null && index.pageByPath.has(joined) ? joined : index.resolve(rawPath, pagePath)
       return path ? formatRoute({ view: 'page', vaultId, path, heading: fragment || undefined }) : null
@@ -139,7 +147,7 @@ export function MarkdownView({ markdown, index, pagePath, vaultId, readBlob }: M
       h5: heading('h5'),
       h6: heading('h6'),
     }
-  }, [index, pagePath, vaultId, readBlob])
+  }, [index, pagePath, vaultId, readBlob, selfHref])
 
   return (
     <div className="markdown">

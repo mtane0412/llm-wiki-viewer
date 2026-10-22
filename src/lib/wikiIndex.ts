@@ -1,7 +1,7 @@
 /**
  * 読み込んだ Markdown ファイル群から、閲覧に必要な索引を組み立てるモジュールです。
  *
- * 索引には、ページの一覧、リンクの解決結果、バックリンク、lint の指摘が含まれます。
+ * 索引には、ページの一覧、リンクの解決結果、バックリンク、lint の指摘、スキーマ（リポジトリ直下の CLAUDE.md）が含まれます。
  * 選択したフォルダに `wiki/` があればそこを Wiki ルートとし、`raw/` を元資料として扱います。
  * `wiki/` が無い場合は、選択したフォルダ全体（`raw/` を除く）を Wiki とみなします。
  */
@@ -93,6 +93,11 @@ export interface WikiIndex {
   homePath: string | null
   /** Wiki ルート直下の index.md（全ページのカタログ）のパスです。無ければ null です。 */
   indexPagePath: string | null
+  /**
+   * Wiki の運用ルール（スキーマ）であるリポジトリ直下の CLAUDE.md です。
+   * wiki/ を含むリポジトリのフォルダを選んだ場合だけ持ち、wiki/ フォルダ自体を選んだ場合や CLAUDE.md が無い場合は null です。
+   */
+  schema: MarkdownFile | null
   /** wikilink を解決する関数です。 */
   resolve: Resolver
 }
@@ -106,6 +111,9 @@ export interface WikiIndexInput {
   /** 画像など Markdown 以外のファイルのパスです。 */
   assetPaths: string[]
 }
+
+/** スキーマのファイル名（小文字）です。大文字小文字を区別しないファイルシステムがあるため、小文字にして比較します。 */
+const SCHEMA_FILE_NAME = 'claude.md'
 
 /** 目次や記録として特別扱いするページのファイル名（小文字・拡張子なし）です。 */
 const SPECIAL_PAGE_NAMES = new Set(['index', 'log', 'overview'])
@@ -320,6 +328,8 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     citations,
     issues,
     homePath: pickHomePath(pages, wikiRoot, indexPagePath),
+    // Wiki ルートが wiki/ のときだけ、選択したフォルダの直下がリポジトリ直下です
+    schema: wikiRoot ? (input.markdownFiles.find((file) => file.path.toLowerCase() === SCHEMA_FILE_NAME) ?? null) : null,
     indexPagePath,
     resolve,
   }

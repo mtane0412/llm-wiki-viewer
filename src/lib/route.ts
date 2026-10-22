@@ -8,6 +8,7 @@
  * - `#/{vaultId}/graph` グラフ
  * - `#/{vaultId}/tags` タグと type の一覧
  * - `#/{vaultId}/callouts` 未解決の矛盾・問い（warning・question の callout）の一覧
+ * - `#/{vaultId}/schema?h={見出し}` リポジトリ直下の CLAUDE.md（Wiki のスキーマ）
  * - `#/{vaultId}/tag/{タグ}` タグを持つページの一覧（タグの中の `/` もエンコードします）
  * - `#/{vaultId}/type/{type}` type が一致するページの一覧
  * - `#/{vaultId}` Wiki のホーム
@@ -22,12 +23,18 @@ export type Route =
   | { view: 'graph'; vaultId: string }
   | { view: 'tags'; vaultId: string }
   | { view: 'callouts'; vaultId: string }
+  | { view: 'schema'; vaultId: string; heading: string | undefined }
   | { view: 'tag'; vaultId: string; tag: string }
   | { view: 'type'; vaultId: string; type: string }
 
 /** パスの各区切りを URL エンコードします（`/` は区切りとして残します）。 */
 function encodePath(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/')
+}
+
+/** 見出しを指定する URL のクエリ（`?h=見出し`）です。見出しが無ければ空文字です。 */
+function headingQuery(heading: string | undefined): string {
+  return heading ? `?h=${encodeURIComponent(heading)}` : ''
 }
 
 /**
@@ -42,15 +49,15 @@ export function formatRoute(route: Route): string {
       return '#/'
     case 'home':
       return `#/${encodeURIComponent(route.vaultId)}`
-    case 'page': {
-      const query = route.heading ? `?h=${encodeURIComponent(route.heading)}` : ''
-      return `#/${encodeURIComponent(route.vaultId)}/page/${encodePath(route.path)}${query}`
-    }
+    case 'page':
+      return `#/${encodeURIComponent(route.vaultId)}/page/${encodePath(route.path)}${headingQuery(route.heading)}`
     case 'lint':
     case 'graph':
     case 'tags':
     case 'callouts':
       return `#/${encodeURIComponent(route.vaultId)}/${route.view}`
+    case 'schema':
+      return `#/${encodeURIComponent(route.vaultId)}/schema${headingQuery(route.heading)}`
     case 'tag':
       return `#/${encodeURIComponent(route.vaultId)}/tag/${encodeURIComponent(route.tag)}`
     case 'type':
@@ -73,6 +80,7 @@ export function parseRoute(hash: string): Route {
     const view = segments[1]
     if (view === undefined) return { view: 'home', vaultId }
     if (view === 'lint' || view === 'graph' || view === 'tags' || view === 'callouts') return { view, vaultId }
+    if (view === 'schema') return { view, vaultId, heading: new URLSearchParams(queryPart).get('h') ?? undefined }
     if (view === 'tag' && segments.length === 3) return { view, vaultId, tag: decodeURIComponent(segments[2]) }
     if (view === 'type' && segments.length === 3) return { view, vaultId, type: decodeURIComponent(segments[2]) }
     if (view === 'page' && segments.length > 2) {

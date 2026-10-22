@@ -31,6 +31,22 @@ describe('buildWikiIndex', () => {
     expect(index.pageByPath.has('CLAUDE.md')).toBe(false)
   })
 
+  it('スキーマのファイル名の大文字小文字は区別しない', () => {
+    const lower = buildWikiIndex({
+      markdownFiles: [
+        { path: 'claude.md', content: '# 小文字のスキーマ' },
+        { path: 'wiki/index.md', content: '# 目次' },
+      ],
+      unloadedMarkdownPaths: [],
+      assetPaths: [],
+    })
+    expect(lower.schema?.path).toBe('claude.md')
+  })
+
+  it('リポジトリ直下の CLAUDE.md を、Wiki のスキーマとして索引に記録する', () => {
+    expect(index.schema).toEqual({ path: 'CLAUDE.md', content: '# スキーマ\n[[壊れていても無視される]]' })
+  })
+
   it('ページの領域（wiki / raw）とタイトルを設定する', () => {
     expect(index.pageByPath.get('wiki/concepts/tool-use.md')).toMatchObject({ area: 'wiki', title: 'Tool use', type: 'concept', tags: ['tool'] })
     expect(index.pageByPath.get('raw/notes/codex.md')).toMatchObject({ area: 'raw', title: 'codex', loaded: false, body: '' })
@@ -121,6 +137,8 @@ describe('buildWikiIndex', () => {
       assetPaths: [],
     })
     expect(flat.wikiRoot).toBe('')
+    // wiki/ フォルダ自体を選んだ場合など、リポジトリ直下が分からないときはスキーマを持ちません
+    expect(flat.schema).toBeNull()
     expect(flat.homePath).toBe('INDEX.md')
     expect(flat.indexPagePath).toBe('INDEX.md')
     expect(flat.backlinks.get('LLM Wiki.md')).toEqual(['INDEX.md'])

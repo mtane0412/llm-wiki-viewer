@@ -15,23 +15,25 @@ import { unified } from 'unified'
 import { visit } from 'unist-util-visit'
 import type { WikiPage } from './wikiIndex'
 
-/** Obsidian の callout の別名と、正規の種類の対応です。 */
-const CALLOUT_ALIASES: Record<string, string> = {
-  summary: 'abstract',
-  tldr: 'abstract',
-  hint: 'tip',
-  important: 'tip',
-  check: 'success',
-  done: 'success',
-  help: 'question',
-  faq: 'question',
-  caution: 'warning',
-  attention: 'warning',
-  fail: 'failure',
-  missing: 'failure',
-  error: 'danger',
-  cite: 'quote',
-}
+/** Obsidian の callout の別名と、正規の種類の対応です。`constructor` などの組み込みのプロパティ名と混ざらないよう Map にします。 */
+const CALLOUT_ALIASES = new Map(
+  Object.entries({
+    summary: 'abstract',
+    tldr: 'abstract',
+    hint: 'tip',
+    important: 'tip',
+    check: 'success',
+    done: 'success',
+    help: 'question',
+    faq: 'question',
+    caution: 'warning',
+    attention: 'warning',
+    fail: 'failure',
+    missing: 'failure',
+    error: 'danger',
+    cite: 'quote',
+  }),
+)
 
 /** 見た目（色・アイコン）を定めている callout の種類です。これ以外は既定の見た目で描画します。 */
 const KNOWN_CALLOUT_TYPES = new Set([
@@ -81,7 +83,7 @@ export interface CalloutMention extends ExtractedCallout {
 /** 書かれたままの種類を、正規の種類に変換します。 */
 function canonicalType(rawType: string): string {
   const lower = rawType.toLowerCase()
-  return CALLOUT_ALIASES[lower] ?? lower
+  return CALLOUT_ALIASES.get(lower) ?? lower
 }
 
 /** タイトルが省略された場合の既定のタイトル（種類の名前の先頭を大文字にしたもの）です。 */
@@ -192,6 +194,15 @@ export function remarkCallout() {
 }
 
 /**
+ * ノードの文字列を返します。入れ子の callout は別の項目として取り出すため、引用の深さを問わず除きます。
+ */
+function textWithoutCallouts(node: BlockContent | DefinitionContent): string {
+  if (node.type !== 'blockquote') return toString(node)
+  if (splitCallout(node)) return ''
+  return node.children.map(textWithoutCallouts).join(' ')
+}
+
+/**
  * Markdown の本文から callout を出現順に取り出します。
  *
  * @param markdown - frontmatter を除いた本文
@@ -206,10 +217,8 @@ export function extractCallouts(markdown: string): ExtractedCallout[] {
     const parts = splitCallout(node)
     if (!parts) return
     const title = parts.titleNodes.map((child) => toString(child)).join('').trim() || parts.marker.title
-    // 入れ子の callout は別の項目として取り出すため、親の本文には含めません
     const text = parts.bodyNodes
-      .filter((child) => child.type !== 'blockquote' || splitCallout(child) === null)
-      .map((child) => toString(child))
+      .map(textWithoutCallouts)
       .join(' ')
       .replace(/\s+/g, ' ')
       .trim()

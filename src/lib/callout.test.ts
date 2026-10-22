@@ -13,6 +13,11 @@ describe('parseCalloutMarker', () => {
     expect(parseCalloutMarker('[!tldr] 要約')?.type).toBe('abstract')
   })
 
+  it('Object の組み込みのプロパティ名と同じ種類も、別名ではなくそのままの種類として扱う', () => {
+    expect(parseCalloutMarker('[!constructor] 組み込みの名前')).toEqual({ type: 'constructor', title: '組み込みの名前' })
+    expect(parseCalloutMarker('[!__proto__]')?.type).toBe('__proto__')
+  })
+
   it('未知の種類はそのまま小文字で返す', () => {
     expect(parseCalloutMarker('[!仮説] 検証待ち')).toEqual({ type: '仮説', title: '検証待ち' })
   })
@@ -55,6 +60,14 @@ describe('extractCallouts', () => {
     const markdown = '> [!note] 親\n> 親の本文\n>\n> > [!warning] 子\n> > 子の本文'
     expect(extractCallouts(markdown)).toEqual([
       { type: 'note', title: '親', text: '親の本文' },
+      { type: 'warning', title: '子', text: '子の本文' },
+    ])
+  })
+
+  it('通常の引用の中にある入れ子の callout も、親の本文には含めない', () => {
+    const markdown = '> [!note] 親\n> 親の本文\n>\n> > 通常の引用\n> >\n> > > [!warning] 子\n> > > 子の本文'
+    expect(extractCallouts(markdown)).toEqual([
+      { type: 'note', title: '親', text: '親の本文 通常の引用' },
       { type: 'warning', title: '子', text: '子の本文' },
     ])
   })

@@ -1123,10 +1123,48 @@ a.badge {
   font-size: 0.85rem;
 }
 
+.lint-list .argument-side > ul > li > a {
+  font-weight: 600;
+}
+
+/* 出典は論拠の下に、左の罫線で区切った小さな一覧として置き、論拠と見分けられるようにします */
 .argument-sources {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0 0.5rem;
-  margin-left: 0.5rem;
+  margin: 0.2rem 0 0.3rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--border);
   font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.argument-sources-label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.argument-side .argument-sources ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: inherit;
+}
+
+.lint-list .argument-side .argument-sources li {
+  padding: 0.1rem 0;
+}
+
+/* 未作成の出典の印は、一覧の行の高さに合わせて外側の余白を消します */
+.argument-sources .lint-target {
+  margin: 0;
+}
+
+/* 出典のリンクは淡い色にしますが、リンクだと分かるよう下線は文字と同じ色で引きます */
+.argument-sources a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.argument-sources a:hover {
+  color: var(--accent);
 }

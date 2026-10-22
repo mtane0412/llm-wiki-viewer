@@ -72,10 +72,11 @@ describe('buildWikiIndex', () => {
     expect(index.indexPagePath).toBe('wiki/index.md')
   })
 
-  it('index.md からリンクされていないページを指摘する（index・log と raw/ は対象外）', () => {
+  it('index.md からリンクされていないページを指摘する（index・log と raw/、孤立ページは対象外）', () => {
     const notInIndex = index.issues.filter((issue) => issue.kind === 'not-in-index').map((issue) => issue.page)
-    // 前提: index.md は tool-use と codex-repo だけにリンクしています
-    expect(notInIndex).toEqual(['wiki/broken-yaml.md', 'wiki/concepts/孤立した概念.md'])
+    // 前提: index.md は tool-use と codex-repo だけにリンクしています。
+    // 孤立した概念と broken-yaml はどこからもリンクされていないため、孤立ページとしてだけ指摘します
+    expect(notInIndex).toEqual([])
   })
 
   it('raw/ のページは lint の対象外にする', () => {
@@ -95,6 +96,51 @@ describe('buildWikiIndex', () => {
     expect(flat.homePath).toBe('INDEX.md')
     expect(flat.indexPagePath).toBe('INDEX.md')
     expect(flat.backlinks.get('LLM Wiki.md')).toEqual(['INDEX.md'])
+  })
+})
+
+describe('index.md 未掲載の判定', () => {
+  const catalog = buildWikiIndex({
+    markdownFiles: [
+      {
+        path: 'wiki/index.md',
+        content: '---\nsources: ["[[concepts/memory]]"]\n---\n- [[concepts/agent]]\n\n![[concepts/planning]]',
+      },
+      { path: 'wiki/overview.md', content: '[[concepts/memory]] [[concepts/planning]] [[concepts/index]] [[concepts/log]]' },
+      { path: 'wiki/concepts/agent.md', content: 'エージェント' },
+      { path: 'wiki/concepts/memory.md', content: '記憶' },
+      { path: 'wiki/concepts/planning.md', content: '計画' },
+      { path: 'wiki/concepts/index.md', content: '概念の一覧' },
+      { path: 'wiki/concepts/log.md', content: '概念の変更記録' },
+    ],
+    unloadedMarkdownPaths: [],
+    assetPaths: [],
+  })
+  const notInIndex = catalog.issues.filter((issue) => issue.kind === 'not-in-index').map((issue) => issue.page)
+
+  it('index.md の本文の通常の wikilink だけを掲載とみなし、埋め込みと frontmatter の sources は数えない', () => {
+    expect(notInIndex).not.toContain('wiki/concepts/agent.md')
+    expect(notInIndex).toContain('wiki/concepts/memory.md')
+    expect(notInIndex).toContain('wiki/concepts/planning.md')
+  })
+
+  it('除外するのは Wiki ルート直下の index・log・overview だけで、サブフォルダの同名ページは判定する', () => {
+    expect(notInIndex).not.toContain('wiki/overview.md')
+    expect(notInIndex).toContain('wiki/concepts/index.md')
+    expect(notInIndex).toContain('wiki/concepts/log.md')
+  })
+
+  it('大文字小文字だけが違う index.md が複数ある場合は、小文字の index.md を目次とみなす', () => {
+    const duplicated = buildWikiIndex({
+      markdownFiles: [
+        { path: 'wiki/INDEX.md', content: '大文字の目次' },
+        { path: 'wiki/index.md', content: '小文字の目次' },
+      ],
+      unloadedMarkdownPaths: [],
+      assetPaths: [],
+    })
+    expect(duplicated.indexPagePath).toBe('wiki/index.md')
+    expect(duplicated.homePath).toBe('wiki/index.md')
   })
 })
 

@@ -177,15 +177,25 @@ function toUnloadedPage(path: string, area: WikiPage['area']): WikiPage {
 
 /** Wiki ルート直下にある、指定した名前（小文字・拡張子なし）のページのパスを返します。無ければ null です。 */
 function findRootPage(pages: WikiPage[], wikiRoot: string, name: string): string | null {
-  const found = pages.find(
-    (page) => page.area === 'wiki' && dirname(page.path) === wikiRoot && stripMarkdownExtension(basename(page.path)).toLowerCase() === name,
-  )
-  return found?.path ?? null
+  const candidates = pages.filter((page) => isRootPageNamed(page, wikiRoot, name))
+  // INDEX.md と index.md のように大文字小文字だけが違うページが並ぶ場合は、小文字の名前と完全に一致するものを選びます
+  const exact = candidates.find((page) => basename(page.path) === `${name}.md`)
+  return (exact ?? candidates[0])?.path ?? null
 }
 
-/** ホームページを選びます。Wiki ルート直下の index → overview → 先頭のページの順です。 */
-function pickHomePath(pages: WikiPage[], wikiRoot: string): string | null {
-  return findRootPage(pages, wikiRoot, 'index') ?? findRootPage(pages, wikiRoot, 'overview') ?? pages.find((page) => page.area === 'wiki')?.path ?? null
+/** ページが Wiki ルート直下にある、指定した名前（小文字・拡張子なし）のページかを判定します。 */
+function isRootPageNamed(page: WikiPage, wikiRoot: string, name: string): boolean {
+  return page.area === 'wiki' && dirname(page.path) === wikiRoot && stripMarkdownExtension(basename(page.path)).toLowerCase() === name
+}
+
+/** ページが Wiki ルート直下の index・log・overview のいずれかかを判定します。 */
+function isRootSpecialPage(page: WikiPage, wikiRoot: string): boolean {
+  return [...SPECIAL_PAGE_NAMES].some((name) => isRootPageNamed(page, wikiRoot, name))
+}
+
+/** ホームページを選びます。Wiki ルート直下の index（indexPagePath）→ overview → 先頭のページの順です。 */
+function pickHomePath(pages: WikiPage[], wikiRoot: string, indexPagePath: string | null): string | null {
+  return indexPagePath ?? findRootPage(pages, wikiRoot, 'overview') ?? pages.find((page) => page.area === 'wiki')?.path ?? null
 }
 
 /** sources が必要なページかを判定します。目次類とソース要約ページ自体は対象外です。 */
@@ -248,16 +258,22 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
 
   // index.md が無い Wiki では、全ページを未掲載と扱わずに判定自体を行いません（画面でその旨を示します）
   const indexPagePath = findRootPage(pages, wikiRoot, 'index')
-  const listedInIndex = new Set((indexPagePath ? (outgoing.get(indexPagePath) ?? []) : []).map((link) => link.resolvedPath))
+  // 目次の項目として数えるのは本文の通常の wikilink だけです（埋め込みと frontmatter の sources は目次の項目ではありません）
+  const listedInIndex = new Set(
+    (indexPagePath ? (outgoing.get(indexPagePath) ?? []) : []).filter((link) => link.origin === 'body' && !link.embed).map((link) => link.resolvedPath),
+  )
 
   for (const page of pages) {
     if (page.area !== 'wiki') continue
-    if (indexPagePath && !isSpecialPage(page.path) && !listedInIndex.has(page.path)) {
-      issues.push({ kind: 'not-in-index', page: page.path })
-    }
+    let isOrphan = false
     if (!isSpecialPage(page.path)) {
       const hasWikiInbound = (backlinks.get(page.path) ?? []).some((from) => pageByPath.get(from)?.area === 'wiki')
-      if (!hasWikiInbound) issues.push({ kind: 'orphan', page: page.path })
+      isOrphan = !hasWikiInbound
+      if (isOrphan) issues.push({ kind: 'orphan', page: page.path })
+    }
+    // 孤立ページは index.md からもリンクされていないため、同じ原因を二重に数えないよう未掲載の指摘から除きます
+    if (indexPagePath && !isOrphan && !isRootSpecialPage(page, wikiRoot) && !listedInIndex.has(page.path)) {
+      issues.push({ kind: 'not-in-index', page: page.path })
     }
     if (requiresSources(page, wikiRoot) && page.sources.length === 0) {
       issues.push({ kind: 'missing-sources', page: page.path })
@@ -272,7 +288,7 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     outgoing,
     backlinks,
     issues,
-    homePath: pickHomePath(pages, wikiRoot),
+    homePath: pickHomePath(pages, wikiRoot, indexPagePath),
     indexPagePath,
     resolve,
   }

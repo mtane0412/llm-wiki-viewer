@@ -49,6 +49,8 @@ describe('LintView の index.md 未掲載', () => {
     const section = screen.getByRole('region', { name: /index\.md 未掲載/ })
     expect(within(section).getByText(/index\.md が見つからないため、判定していません/)).toBeInTheDocument()
     expect(within(section).queryByText('指摘はありません。')).toBeNull()
+    // 判定していない区画では、件数を 0 と表示しません
+    expect(within(section).getByRole('heading', { level: 2 })).toHaveTextContent('index.md 未掲載 —')
   })
 
   it('未掲載のページへ移動できる', () => {
@@ -56,6 +58,7 @@ describe('LintView の index.md 未掲載', () => {
       markdownFiles: [
         { path: 'wiki/index.md', content: '[[concepts/agent]]' },
         { path: 'wiki/concepts/agent.md', content: '[[concepts/memory]]' },
+        { path: 'wiki/overview.md', content: '[[concepts/memory]]' },
         { path: 'wiki/concepts/memory.md', content: '---\ntitle: 記憶\n---\n本文' },
       ],
       unloadedMarkdownPaths: [],

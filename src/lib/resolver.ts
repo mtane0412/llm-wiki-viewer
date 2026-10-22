@@ -25,8 +25,12 @@ export interface ResolvableEntry {
 /** リンク先とリンク元のパスを受け取り、解決したパスか null を返す関数です。 */
 export type Resolver = (target: string, fromPath: string) => string | null
 
-/** 照合用にキーを正規化します（小文字化と拡張子 .md の除去）。 */
-function normalizeKey(value: string): string {
+/**
+ * 照合用にキーを正規化します（前後の空白の除去・拡張子 .md の除去・小文字化）。
+ *
+ * リンク先の表記ゆれを同じものとして扱う規則です。解決できないリンク先の集計にも使います。
+ */
+export function normalizeKey(value: string): string {
   return stripMarkdownExtension(value.trim()).toLowerCase()
 }
 

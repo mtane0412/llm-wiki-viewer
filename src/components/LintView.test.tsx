@@ -1,0 +1,32 @@
+import { render, screen, within } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
+import { buildWikiIndex } from '../lib/wikiIndex'
+import { LintView } from './LintView'
+
+/** 未作成のページ「RAG」へ 2 ページから、「ベクトル DB」へ 1 ページからリンクしている Wiki です。 */
+const index = buildWikiIndex({
+  markdownFiles: [
+    { path: 'wiki/index.md', content: '- [[concepts/agent]]\n- [[RAG]]' },
+    { path: 'wiki/concepts/agent.md', content: '---\ntitle: エージェント\n---\n[[RAG]] と [[ベクトル DB]] を使う。' },
+  ],
+  unloadedMarkdownPaths: [],
+  assetPaths: [],
+})
+
+describe('LintView の未作成ページ（赤リンク）', () => {
+  it('未作成のリンク先を参照数の多い順に、参照数とともに表示する', () => {
+    render(<LintView index={index} vaultId="v1" />)
+    const section = screen.getByRole('region', { name: /未作成ページ/ })
+    expect(within(section).getAllByRole('code').map((target) => target.textContent)).toEqual(['RAG', 'ベクトル DB'])
+    // 参照数は、リンク先の文字列と同じ項目の中に表示します
+    expect(within(section).getAllByRole('code')[0].closest('li')).toHaveTextContent('2 ページ')
+    expect(within(section).getAllByRole('code')[1].closest('li')).toHaveTextContent('1 ページ')
+  })
+
+  it('各リンク先から参照元のページへ移動できる', () => {
+    render(<LintView index={index} vaultId="v1" />)
+    const section = screen.getByRole('region', { name: /未作成ページ/ })
+    expect(within(section).getAllByRole('link', { name: 'エージェント' })[0]).toHaveAttribute('href', '#/v1/page/wiki/concepts/agent.md')
+    expect(within(section).getByRole('link', { name: 'index' })).toHaveAttribute('href', '#/v1/page/wiki/index.md')
+  })
+})

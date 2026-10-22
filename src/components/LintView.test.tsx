@@ -102,6 +102,6 @@ describe('LintView の frontmatter の必須項目と type', () => {
     const withoutSchema = buildWikiIndex({ markdownFiles: [{ path: 'wiki/a.md', content: '本文' }], unloadedMarkdownPaths: [], assetPaths: [] })
     render(<LintView index={withoutSchema} vaultId="v1" />)
     const section = screen.getByRole('region', { name: /必須項目の欠け/ })
-    expect(within(section).getByText(/CLAUDE.md）が無いため、判定していません/)).toBeInTheDocument()
+    expect(within(section).getByText(/CLAUDE.md）を読み込んでいないため、判定していません/)).toBeInTheDocument()
   })
 })

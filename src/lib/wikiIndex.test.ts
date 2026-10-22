@@ -157,6 +157,8 @@ describe('frontmatter の必須項目と type の値の判定', () => {
       { path: 'wiki/concepts/typo.md', content: page('title: 誤記\ntype: concpet\nsources: []\nupdated: 2026-10-20', '本文') },
       { path: 'wiki/concepts/no-type.md', content: page('title: type なし\nsources: []\nupdated: 2026-10-20', '本文') },
       { path: 'wiki/concepts/broken.md', content: '---\ntitle: [閉じ忘れ\n---\n本文' },
+      { path: 'wiki/concepts/blank-type.md', content: page('title: 空白の type\ntype: " "\nsources: []\nupdated: 2026-10-20', '本文') },
+      { path: 'wiki/projects/overview.md', content: page('title: プロジェクトの概要\nsources: []\nupdated: 2026-10-20', '本文') },
     ],
     unloadedMarkdownPaths: ['raw/notes/memo.md'],
     assetPaths: [],
@@ -164,9 +166,12 @@ describe('frontmatter の必須項目と type の値の判定', () => {
   const issuesOf = (kind: string) => checked.issues.filter((issue) => issue.kind === kind)
 
   it('スキーマの frontmatter の例にあるキーが欠けたページを、欠けたキーとともに指摘する', () => {
+    // 空白だけの値は無いものとみなし、サブフォルダの overview.md（目次類ではないページ）も判定します
     expect(issuesOf('missing-frontmatter-keys')).toEqual([
+      { kind: 'missing-frontmatter-keys', page: 'wiki/concepts/blank-type.md', keys: ['type'] },
       { kind: 'missing-frontmatter-keys', page: 'wiki/concepts/no-type.md', keys: ['type'] },
       { kind: 'missing-frontmatter-keys', page: 'wiki/concepts/no-updated.md', keys: ['updated'] },
+      { kind: 'missing-frontmatter-keys', page: 'wiki/projects/overview.md', keys: ['type'] },
     ])
   })
 
@@ -188,7 +193,8 @@ describe('frontmatter の必須項目と type の値の判定', () => {
       assetPaths: [],
     })
     expect(withoutSchema.issues.some((issue) => issue.kind === 'missing-frontmatter-keys' || issue.kind === 'invalid-type')).toBe(false)
-    expect(withoutSchema.frontmatterRules.requiredKeys).toEqual({ ok: false, reason: expect.stringContaining('CLAUDE.md') })
+    // wiki/ フォルダ自体を開いた場合にも当てはまるよう、リポジトリのフォルダを開けば判定できることを示します
+    expect(withoutSchema.frontmatterRules.requiredKeys).toEqual({ ok: false, reason: expect.stringContaining('リポジトリのフォルダを開くと判定できます') })
     expect(withoutSchema.frontmatterRules.typeValues.ok).toBe(false)
   })
 })

@@ -122,19 +122,20 @@ const SCHEMA_FILE_NAME = 'claude.md'
 
 /** スキーマが無い Wiki での frontmatter の規則です。判定しない理由だけを持ちます。 */
 const RULES_WITHOUT_SCHEMA: FrontmatterRules = (() => {
-  const reason = 'スキーマ（リポジトリ直下の CLAUDE.md）が無いため、判定していません。'
+  const reason =
+    'スキーマ（リポジトリ直下の CLAUDE.md）を読み込んでいないため、判定していません。wiki/ フォルダ自体を開いた場合は、リポジトリのフォルダを開くと判定できます。'
   return { requiredKeys: { ok: false, reason }, typeValues: { ok: false, reason } }
 })()
 
-/** frontmatter の値が空（無い・null・空文字）かを判定します。空の配列は値があるものとみなします。 */
+/** frontmatter の値が空（無い・null・空白だけの文字列）かを判定します。空の配列（`aliases: []` など）は値があるものとみなします。 */
 function isBlankValue(value: unknown): boolean {
-  return value === undefined || value === null || value === ''
+  return value === undefined || value === null || (typeof value === 'string' && value.trim() === '')
 }
 
 /**
  * frontmatter の規則に照らして、ページの必須項目の欠けと type の値の誤りを返します。
  *
- * @param page - wiki のページ（目次類と YAML を解析できないページは呼び出し元で除きます）
+ * @param page - wiki のページ（ルート直下の目次類と YAML を解析できないページは呼び出し元で除きます）
  * @param rules - スキーマから読み取った規則
  * @returns lint の指摘
  */
@@ -144,8 +145,8 @@ function frontmatterIssues(page: WikiPage, rules: FrontmatterRules): LintIssue[]
     const missing = rules.requiredKeys.value.filter((key) => isBlankValue(page.frontmatter[key]))
     if (missing.length > 0) issues.push({ kind: 'missing-frontmatter-keys', page: page.path, keys: missing })
   }
-  // type が無いページは必須項目の欠けとしてだけ数えます
-  if (rules.typeValues.ok && page.type !== undefined && !rules.typeValues.value.includes(page.type)) {
+  // type が無い（空白だけを含む）ページは必須項目の欠けとしてだけ数えます
+  if (rules.typeValues.ok && page.type !== undefined && page.type.trim() !== '' && !rules.typeValues.value.includes(page.type)) {
     issues.push({ kind: 'invalid-type', page: page.path, type: page.type })
   }
   return issues
@@ -285,7 +286,8 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
   // Wiki ルートが wiki/ のときだけ、選択したフォルダの直下がリポジトリ直下です
   const schema = wikiRoot ? (input.markdownFiles.find((file) => file.path.toLowerCase() === SCHEMA_FILE_NAME) ?? null) : null
   const frontmatterRules = schema ? parseFrontmatterRules(schema.content) : RULES_WITHOUT_SCHEMA
-  const pagesWithFrontmatterError = new Set<string>()
+  // frontmatter の規則の指摘は、ほかの指摘と同じくページのパスの順に並べるため、いったん集めてから並べ替えます
+  const ruleIssues: LintIssue[] = []
 
   const pages: WikiPage[] = []
   for (const file of input.markdownFiles) {
@@ -293,7 +295,8 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     if (!area) continue
     const { page, frontmatterError } = toPage(file, area)
     pages.push(page)
-    if (frontmatterError) pagesWithFrontmatterError.add(file.path)
+    // YAML を解析できないページは「frontmatter エラー」としてだけ指摘します
+    if (area === 'wiki' && !frontmatterError && !isRootSpecialPage(page, wikiRoot)) ruleIssues.push(...frontmatterIssues(page, frontmatterRules))
     if (frontmatterError && area === 'wiki') {
       issues.push({ kind: 'frontmatter-error', page: file.path, message: frontmatterError })
     }
@@ -303,6 +306,7 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     if (area) pages.push(toUnloadedPage(path, area))
   }
   pages.sort((a, b) => a.path.localeCompare(b.path))
+  issues.push(...ruleIssues.sort((a, b) => a.page.localeCompare(b.page)))
   const pageByPath = new Map(pages.map((page) => [page.path, page]))
 
   const assetEntries = input.assetPaths.map((path) => ({ path, area: 'raw' as const, title: basename(path), aliases: [] }))
@@ -354,8 +358,6 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     if (indexPagePath && !isOrphan && !isRootSpecialPage(page, wikiRoot) && !listedInIndex.has(page.path)) {
       issues.push({ kind: 'not-in-index', page: page.path })
     }
-    // YAML を解析できないページは「frontmatter エラー」としてだけ指摘します
-    if (!isSpecialPage(page.path) && !pagesWithFrontmatterError.has(page.path)) issues.push(...frontmatterIssues(page, frontmatterRules))
     if (requiresSources(page, wikiRoot) && page.sources.length === 0) {
       issues.push({ kind: 'missing-sources', page: page.path })
     }

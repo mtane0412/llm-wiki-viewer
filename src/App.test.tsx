@@ -181,6 +181,19 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { level: 1, name: '更新後の目次' }, { timeout: 2000 })).toBeInTheDocument()
   })
 
+  it('自動の再読み込みが一時的に失敗しても監視を続け、次の周期で反映する', async () => {
+    const fs = createFakeFileSystem('agent-wiki', agentWiki)
+    const { user } = renderApp({ pick: [fs.root], pollIntervalMs: 50 })
+    await user.click(await screen.findByRole('button', { name: 'Wiki フォルダを開く' }))
+    await screen.findByRole('heading', { level: 1, name: 'Index' })
+
+    await act(async () => {
+      fs.writeFile('wiki/index.md', '# 失敗後に反映される目次')
+      fs.failNextRead('wiki/index.md')
+    })
+    expect(await screen.findByRole('heading', { level: 1, name: '失敗後に反映される目次' }, { timeout: 2000 })).toBeInTheDocument()
+  })
+
   it('File System Access API が無いブラウザでは、フォルダ選択の入力欄から読み込む', async () => {
     const { user } = renderApp({ supportsPicker: false })
     const input = await screen.findByLabelText('Wiki フォルダを選択（読み込み専用）')

@@ -165,10 +165,11 @@ export function useVaults(deps: AppDeps): VaultsApi {
           try {
             if (await loader.hasChanges()) {
               const { index } = await loader.load()
-              patch(vault.id, { index })
+              patch(vault.id, { index, error: null })
             }
           } catch (cause) {
-            patch(vault.id, { status: 'error', error: `再読み込みに失敗しました: ${messageOf(cause)}` })
+            // LLM の書き込み途中などの一時的な失敗では監視を止めず、ready のまま次の周期で再試行します
+            patch(vault.id, { error: `再読み込みに失敗しました（次の周期で再試行します）: ${messageOf(cause)}` })
           } finally {
             runtime.busy = false
           }

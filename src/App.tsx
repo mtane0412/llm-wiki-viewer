@@ -18,6 +18,7 @@ import { SearchResults, type VaultSearchResult } from './components/SearchResult
 import { StartView } from './components/StartView'
 import { formatRoute, type Route } from './lib/route'
 import { searchPages } from './lib/search'
+import type { WikiIndex } from './lib/wikiIndex'
 import './App.css'
 
 /** グラフ画面は描画ライブラリが大きいため、開いたときに読み込みます。 */
@@ -213,6 +214,31 @@ function MainContent({ vault, route, navigate, onReconnect }: MainContentProps) 
   }
 
   const index = vault.index
+  const reloadWarning = vault.error && (
+    <p role="alert" className="error-banner">
+      {vault.error}
+    </p>
+  )
+  return (
+    <>
+      {reloadWarning}
+      <ViewContent vault={vault} index={index} readText={vault.readText} readBlob={vault.readBlob} route={route} navigate={navigate} />
+    </>
+  )
+}
+
+/** ViewContent の引数です。 */
+interface ViewContentProps {
+  vault: Vault
+  index: WikiIndex
+  readText: (path: string) => Promise<string>
+  readBlob: (path: string) => Promise<Blob>
+  route: Route
+  navigate: (hash: string) => void
+}
+
+/** 画面の種類（ページ・lint・グラフ）に応じた表示です。 */
+function ViewContent({ vault, index, readText, readBlob, route, navigate }: ViewContentProps) {
   switch (route.view) {
     case 'lint':
       return <LintView index={index} vaultId={vault.id} />
@@ -233,9 +259,9 @@ function MainContent({ vault, route, navigate, onReconnect }: MainContentProps) 
         )
       }
       if (!page.loaded) {
-        return <DeferredPageView page={page} index={index} vaultId={vault.id} heading={route.heading} readText={vault.readText} readBlob={vault.readBlob} />
+        return <DeferredPageView page={page} index={index} vaultId={vault.id} heading={route.heading} readText={readText} readBlob={readBlob} />
       }
-      return <PageView page={page} index={index} vaultId={vault.id} heading={route.heading} readBlob={vault.readBlob} />
+      return <PageView page={page} index={index} vaultId={vault.id} heading={route.heading} readBlob={readBlob} />
     }
     default:
       return index.homePath ? <p className="muted">読み込み中…</p> : <p className="notice">この Wiki には Markdown のページがありません。</p>

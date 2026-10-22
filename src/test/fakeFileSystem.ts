@@ -24,6 +24,8 @@ export interface FakeFileSystem {
   root: FileSystemDirectoryHandle
   /** ファイルを書き換え、更新時刻を進めます。 */
   writeFile(path: string, content: string): void
+  /** 指定したファイルの次回の読み込み（getFile）を 1 回だけ失敗させます。 */
+  failNextRead(path: string): void
 }
 
 /**
@@ -36,6 +38,7 @@ export interface FakeFileSystem {
  */
 export function createFakeFileSystem(name: string, tree: FakeTree, options: FakeFileSystemOptions = {}): FakeFileSystem {
   let permission: PermissionState = options.permission ?? 'granted'
+  const failingPaths = new Set<string>()
   const files = new Map<string, { content: string; lastModified: number }>()
   let clock = 1000
 
@@ -54,7 +57,7 @@ export function createFakeFileSystem(name: string, tree: FakeTree, options: Fake
       name: path.split('/').pop(),
       async getFile() {
         const file = files.get(path)
-        if (!file) throw new DOMException(`${path} が見つかりません`, 'NotFoundError')
+        if (!file || failingPaths.delete(path)) throw new DOMException(`${path} が見つかりません`, 'NotFoundError')
         return new File([file.content], path.split('/').pop() ?? path, { lastModified: file.lastModified })
       },
     }) as unknown as FileSystemFileHandle
@@ -105,6 +108,9 @@ export function createFakeFileSystem(name: string, tree: FakeTree, options: Fake
 
   return {
     root,
+    failNextRead(path) {
+      failingPaths.add(path)
+    },
     writeFile(path, content) {
       clock += 1000
       files.set(path, { content, lastModified: clock })

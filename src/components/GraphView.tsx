@@ -70,7 +70,10 @@ export default function GraphView({ index, vaultId, onNavigate }: GraphViewProps
     [data],
   )
 
+  // 全体表示への自動ズームはデータごとに 1 回だけ行い、ノードのドラッグ後に表示範囲を戻さないようにします
+  const fitted = useRef(false)
   useEffect(() => {
+    fitted.current = false
     graphRef.current?.d3Force('charge')?.strength(CHARGE_STRENGTH)
   }, [data])
 
@@ -95,7 +98,11 @@ export default function GraphView({ index, vaultId, onNavigate }: GraphViewProps
           graphData={data}
           nodeRelSize={NODE_REL_SIZE}
           cooldownTicks={200}
-          onEngineStop={() => graphRef.current?.zoomToFit(400, 40)}
+          onEngineStop={() => {
+            if (fitted.current) return
+            fitted.current = true
+            graphRef.current?.zoomToFit(400, 40)
+          }}
           width={size.width}
           height={size.height}
           nodeId="id"

@@ -6,7 +6,7 @@
  * `wiki/` が無い場合は、選択したフォルダ全体（`raw/` を除く）を Wiki とみなします。
  */
 import { parseFrontmatter } from './frontmatter'
-import { basename, dirname, stripMarkdownExtension } from './path'
+import { basename, dirname, pageNameOf, stripMarkdownExtension } from './path'
 import { createResolver, normalizeKey, type Resolver } from './resolver'
 import { extractWikilinks, parseWikilink, type ExtractedWikilink } from './wikilink'
 
@@ -104,7 +104,7 @@ const SPECIAL_PAGE_NAMES = new Set(['index', 'log', 'overview'])
 
 /** ページが index / log / overview のいずれかかを判定します。 */
 export function isSpecialPage(path: string): boolean {
-  return SPECIAL_PAGE_NAMES.has(stripMarkdownExtension(basename(path)).toLowerCase())
+  return SPECIAL_PAGE_NAMES.has(pageNameOf(path))
 }
 
 /** 値を文字列の配列として取り出します。単一の文字列は 1 要素の配列にします。 */

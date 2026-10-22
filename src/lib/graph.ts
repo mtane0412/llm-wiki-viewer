@@ -4,7 +4,7 @@
  * 目次の index と記録の log は全ページにリンクするハブになり、図が読みにくくなるため除外します。
  * raw/ の元資料もノードに含めません。
  */
-import { basename, dirname, stripMarkdownExtension } from './path'
+import { dirname, pageNameOf } from './path'
 import type { WikiIndex } from './wikiIndex'
 
 /** グラフのノードです。 */
@@ -33,7 +33,7 @@ export interface GraphData {
 
 /** グラフから除外するページ（index と log）かを判定します。 */
 function isHubPage(path: string): boolean {
-  const name = stripMarkdownExtension(basename(path)).toLowerCase()
+  const name = pageNameOf(path)
   return name === 'index' || name === 'log'
 }
 

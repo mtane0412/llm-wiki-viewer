@@ -107,7 +107,9 @@ export function PageView({ page, index, vaultId, heading, readBlob }: PageViewPr
               <div>
                 <dt>type</dt>
                 <dd>
-                  <span className="badge">{page.type}</span>
+                  <a className="badge" href={formatRoute({ view: 'type', vaultId, type: page.type })}>
+                    {page.type}
+                  </a>
                 </dd>
               </div>
             )}
@@ -116,7 +118,7 @@ export function PageView({ page, index, vaultId, heading, readBlob }: PageViewPr
                 <dt>tags</dt>
                 <dd className="tag-list">
                   {page.tags.map((tag) => (
-                    <span key={tag} className="tag">{`#${tag}`}</span>
+                    <a key={tag} className="tag" href={formatRoute({ view: 'tag', vaultId, tag })}>{`#${tag}`}</a>
                   ))}
                 </dd>
               </div>

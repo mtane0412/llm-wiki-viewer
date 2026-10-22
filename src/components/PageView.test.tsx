@@ -135,3 +135,19 @@ describe('PageView の根拠としての被参照', () => {
     expect(screen.queryByRole('region', { name: /を根拠にしているページ/ })).toBeNull()
   })
 })
+
+describe('PageView のタグと type', () => {
+  it('タグと type を、それぞれで絞り込んだページ一覧へのリンクとして表示する', () => {
+    const tagged = buildWikiIndex({
+      markdownFiles: [{ path: 'wiki/concepts/tool-use.md', content: '---\ntitle: ツール使用\ntype: concept\ntags: [agent]\n---\n本文' }],
+      unloadedMarkdownPaths: [],
+      assetPaths: [],
+    })
+    const page = tagged.pageByPath.get('wiki/concepts/tool-use.md')
+    if (!page) throw new Error('テストデータにページがありません')
+    window.scrollTo = vi.fn()
+    render(<PageView page={page} index={tagged} vaultId="v1" heading={undefined} readBlob={vi.fn()} />)
+    expect(screen.getByRole('link', { name: '#agent' })).toHaveAttribute('href', '#/v1/tag/agent')
+    expect(screen.getByRole('link', { name: 'concept' })).toHaveAttribute('href', '#/v1/type/concept')
+  })
+})

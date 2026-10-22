@@ -2,8 +2,8 @@
  * LLM Wiki Viewer のルートコンポーネントです。
  *
  * 画面構成:
- * - 左: Wiki の切り替え、検索、表示の切り替え（ページ / Lint / グラフ）、ページ一覧
- * - 右: 選んだ画面（ページ・lint の指摘・グラフ）
+ * - 左: Wiki の切り替え、検索、表示の切り替え（ページ / タグ / Lint / グラフ）、ページ一覧
+ * - 右: 選んだ画面（ページ・タグと type の一覧・絞り込んだページ一覧・lint の指摘・グラフ）
  * Wiki を 1 つも開いていない場合は、スタート画面だけを表示します。
  */
 import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useState } from 'react'
@@ -16,6 +16,7 @@ import { LintView } from './components/LintView'
 import { PageView } from './components/PageView'
 import { SearchResults, type VaultSearchResult } from './components/SearchResults'
 import { StartView } from './components/StartView'
+import { PagesByTagView, PagesByTypeView, TaxonomyView } from './components/TaxonomyView'
 import { formatRoute, type Route } from './lib/route'
 import { searchPages } from './lib/search'
 import type { WikiIndex } from './lib/wikiIndex'
@@ -147,6 +148,12 @@ export default function App({ deps }: AppProps) {
           <a href={formatRoute({ view: 'home', vaultId: vault.id })} aria-current={route.view === 'page' ? 'page' : undefined}>
             ページ
           </a>
+          <a
+            href={formatRoute({ view: 'tags', vaultId: vault.id })}
+            aria-current={route.view === 'tags' || route.view === 'tag' || route.view === 'type' ? 'page' : undefined}
+          >
+            タグ
+          </a>
           <a href={formatRoute({ view: 'lint', vaultId: vault.id })} aria-current={route.view === 'lint' ? 'page' : undefined}>
             Lint <span className="count">{issueCount}</span>
           </a>
@@ -237,9 +244,15 @@ interface ViewContentProps {
   navigate: (hash: string) => void
 }
 
-/** 画面の種類（ページ・lint・グラフ）に応じた表示です。 */
+/** 画面の種類（ページ・タグ・lint・グラフ）に応じた表示です。 */
 function ViewContent({ vault, index, readText, readBlob, route, navigate }: ViewContentProps) {
   switch (route.view) {
+    case 'tags':
+      return <TaxonomyView index={index} vaultId={vault.id} />
+    case 'tag':
+      return <PagesByTagView index={index} vaultId={vault.id} tag={route.tag} />
+    case 'type':
+      return <PagesByTypeView index={index} vaultId={vault.id} type={route.type} />
     case 'lint':
       return <LintView index={index} vaultId={vault.id} />
     case 'graph':

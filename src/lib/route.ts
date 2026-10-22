@@ -6,6 +6,9 @@
  * - `#/{vaultId}/page/{パス}?h={見出し}` ページ
  * - `#/{vaultId}/lint` lint の指摘一覧
  * - `#/{vaultId}/graph` グラフ
+ * - `#/{vaultId}/tags` タグと type の一覧
+ * - `#/{vaultId}/tag/{タグ}` タグを持つページの一覧（タグの中の `/` もエンコードします）
+ * - `#/{vaultId}/type/{type}` type が一致するページの一覧
  * - `#/{vaultId}` Wiki のホーム
  */
 
@@ -16,6 +19,9 @@ export type Route =
   | { view: 'page'; vaultId: string; path: string; heading: string | undefined }
   | { view: 'lint'; vaultId: string }
   | { view: 'graph'; vaultId: string }
+  | { view: 'tags'; vaultId: string }
+  | { view: 'tag'; vaultId: string; tag: string }
+  | { view: 'type'; vaultId: string; type: string }
 
 /** パスの各区切りを URL エンコードします（`/` は区切りとして残します）。 */
 function encodePath(path: string): string {
@@ -40,7 +46,12 @@ export function formatRoute(route: Route): string {
     }
     case 'lint':
     case 'graph':
+    case 'tags':
       return `#/${encodeURIComponent(route.vaultId)}/${route.view}`
+    case 'tag':
+      return `#/${encodeURIComponent(route.vaultId)}/tag/${encodeURIComponent(route.tag)}`
+    case 'type':
+      return `#/${encodeURIComponent(route.vaultId)}/type/${encodeURIComponent(route.type)}`
   }
 }
 
@@ -58,7 +69,9 @@ export function parseRoute(hash: string): Route {
     const vaultId = decodeURIComponent(segments[0])
     const view = segments[1]
     if (view === undefined) return { view: 'home', vaultId }
-    if (view === 'lint' || view === 'graph') return { view, vaultId }
+    if (view === 'lint' || view === 'graph' || view === 'tags') return { view, vaultId }
+    if (view === 'tag' && segments.length === 3) return { view, vaultId, tag: decodeURIComponent(segments[2]) }
+    if (view === 'type' && segments.length === 3) return { view, vaultId, type: decodeURIComponent(segments[2]) }
     if (view === 'page' && segments.length > 2) {
       const heading = new URLSearchParams(queryPart).get('h') ?? undefined
       return { view: 'page', vaultId, path: segments.slice(2).map(decodeURIComponent).join('/'), heading }

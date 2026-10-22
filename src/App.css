@@ -389,7 +389,8 @@ details[open] > summary::before {
 }
 
 .page,
-.lint {
+.lint,
+.taxonomy {
   max-width: 46rem;
   margin: 0 auto;
 }
@@ -445,6 +446,15 @@ details[open] > summary::before {
 
 .tag {
   color: var(--muted);
+  text-decoration: none;
+}
+
+.tag:hover {
+  color: var(--accent);
+}
+
+a.badge {
+  text-decoration: none;
 }
 
 .source-list {
@@ -716,6 +726,54 @@ details[open] > summary::before {
 .log-entry h2 {
   margin: 0.15rem 0 0.4rem;
   font-size: 1.05rem;
+}
+
+/* ---------- タグと type ---------- */
+.taxonomy h1 {
+  margin: 0 0 0.25rem;
+}
+
+.taxonomy-section {
+  margin-top: 2rem;
+}
+
+.taxonomy-section h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.taxonomy-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.taxonomy-list a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  text-decoration: none;
+}
+
+.taxonomy-list a:hover {
+  border-color: var(--accent);
+}
+
+.taxonomy-pages {
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.taxonomy-pages li {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border);
 }
 
 /* ---------- lint ---------- */

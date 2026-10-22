@@ -105,3 +105,31 @@ describe('LintView の frontmatter の必須項目と type', () => {
     expect(within(section).getByText(/CLAUDE.md）を読み込んでいないため、判定していません/)).toBeInTheDocument()
   })
 })
+
+describe('LintView の取り込まれていない元資料', () => {
+  // 前提: raw/ の元資料のうち、パブコメ要約.md だけが wiki ページの sources から参照されています
+  const withRaw = buildWikiIndex({
+    markdownFiles: [
+      { path: 'wiki/index.md', content: '---\ntitle: 目次\nsources: ["[[raw/パブコメ要約]]"]\n---\n本文' },
+      { path: 'raw/パブコメ要約.md', content: '要約' },
+      { path: 'raw/未読の意見書.md', content: '意見' },
+    ],
+    unloadedMarkdownPaths: [],
+    assetPaths: ['raw/アンケート.csv'],
+  })
+
+  it('wiki ページから参照されていない元資料を表示し、Markdown の元資料へは移動できる', () => {
+    render(<LintView index={withRaw} vaultId="v1" />)
+    const section = screen.getByRole('region', { name: /取り込まれていない元資料/ })
+    expect(within(section).getByRole('link', { name: '未読の意見書' })).toHaveAttribute('href', `#/v1/page/${encodeURI('raw/未読の意見書.md')}`)
+    expect(within(section).queryByText('raw/パブコメ要約.md')).not.toBeInTheDocument()
+  })
+
+  it('Markdown 以外の元資料は、開く画面が無いためリンクにせずパスだけを表示する', () => {
+    render(<LintView index={withRaw} vaultId="v1" />)
+    const section = screen.getByRole('region', { name: /取り込まれていない元資料/ })
+    const csvItem = within(section).getByText('raw/アンケート.csv').closest('li')
+    if (!csvItem) throw new Error('アンケート.csv の項目が見つかりません')
+    expect(within(csvItem).queryByRole('link')).not.toBeInTheDocument()
+  })
+})

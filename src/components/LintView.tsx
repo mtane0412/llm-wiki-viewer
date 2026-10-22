@@ -1,6 +1,6 @@
 /**
  * lint の指摘（壊れたリンク・孤立ページ・sources 未記載・frontmatter エラー・index.md 未掲載・
- * frontmatter の必須項目の欠け・type の値の誤り）を一覧表示するコンポーネントです。
+ * frontmatter の必須項目の欠け・type の値の誤り・取り込まれていない元資料）を一覧表示するコンポーネントです。
  * 壊れたリンクは、未作成のリンク先ごとに参照数の多い順に並べた「未作成ページ（赤リンク）」としても表示します。
  *
  * LLM Wiki の Lint 操作で LLM に直させる前に、人が全体の健全性を確認するための画面です。
@@ -53,6 +53,12 @@ const SECTIONS: {
         : 'type の値が、CLAUDE.md で定めた選択肢に無いページです。',
     unavailableReason: (index) => (index.frontmatterRules.typeValues.ok ? undefined : index.frontmatterRules.typeValues.reason),
   },
+  {
+    kind: 'unreferenced-raw',
+    title: '取り込まれていない元資料',
+    description:
+      'raw/ の元資料（Markdown 以外のファイルを含む）のうち、どの wiki ページの本文のリンク・埋め込みや sources からも参照されていないものです。要約の過程で取りこぼした資料がないかを確かめるために使います（raw のファイルどうしのリンクは参照に数えません）。',
+  },
 ]
 
 /** 指摘の詳細（リンク先・エラーの内容・欠けた項目など）を描画します。ページだけで分かる指摘では何も描画しません。 */
@@ -77,6 +83,7 @@ function IssueDetail({ issue }: { issue: LintIssue }) {
     case 'orphan':
     case 'missing-sources':
     case 'not-in-index':
+    case 'unreferenced-raw':
       return null
     default: {
       const exhaustive: never = issue
@@ -159,7 +166,8 @@ export function LintView({ index, vaultId }: LintViewProps) {
             <ul className="lint-list">
               {[...byPage].map(([path, pageIssues]) => (
                 <li key={path}>
-                  {pageLink(path)}
+                  {/* Markdown 以外の元資料（CSV・画像など）は開く画面が無いため、リンクにせずパスだけを示します */}
+                  {index.pageByPath.has(path) && pageLink(path)}
                   <span className="muted lint-path">{path}</span>
                   {pageIssues.map((issue, position) => (
                     <IssueDetail key={position} issue={issue} />

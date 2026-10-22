@@ -1130,3 +1130,51 @@ a.badge {
   margin-left: 0.5rem;
   font-size: 0.8rem;
 }
+
+/* ---------- raw/ の CSV と投票の集計 ---------- */
+.csv-file h1 {
+  margin: 0;
+}
+
+/* 列の多い CSV は、ページ全体ではなく表の領域だけを横にスクロールします */
+.csv-table-wrapper {
+  max-width: 100%;
+  margin-top: 1rem;
+  overflow-x: auto;
+}
+
+.csv-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.csv-table th,
+.csv-table td {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.vote-scatter {
+  display: block;
+  width: 100%;
+  max-width: 24rem;
+  margin: 1rem 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.vote-rates {
+  display: block;
+  font-size: 0.8rem;
+}
+
+.vote-analysis .lint-target {
+  margin-left: 0.5rem;
+}
+
+.vote-analysis .legend-swatch {
+  display: inline-block;
+  margin-right: 0.4em;
+}

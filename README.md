@@ -13,6 +13,7 @@ File System Access API でローカルのフォルダを直接読むため、サ
 - `log.md` のタイムライン表示（日付順・操作の種類での絞り込み・形式に合わない見出しの検出）
 - タグ・`type` の一覧（件数付き）と、タグ・`type` で絞り込んだページの一覧（URL で共有・再読み込みできます）
 - Obsidian 形式の callout（`> [!warning] 矛盾` など）の描画と、Wiki 全体の「未解決の矛盾・問い」（warning・question）の一覧
+- 論点マップ: 熟議の構造化の手法 IBIS（論点 → 立場 → 賛否の論拠）で書いたページから、論点ごとに「立場 → 賛成の論拠・反対の論拠（と出典）」の木を表示し、関係の誤り・欠け、片方の論拠しか無い立場（議論の偏り）、`sources` の無い論拠を Lint で指摘します（スキーマは下の「論点マップのスキーマ」）
 - リポジトリ直下の `CLAUDE.md`（Wiki のスキーマ）の表示（変更も自動で反映）
 - 最近の更新（`updated` の新しい順）と、前回の閲覧以降に内容が変わったページ・新しいページの表示（既読の記録は Wiki ごとに IndexedDB に保存）
 - ページ間リンクのグラフ（`type` で色分け）
@@ -31,6 +32,46 @@ Chrome・Edge などの Chromium 系ブラウザで開き、「Wiki フォルダ
 開いたフォルダは IndexedDB に登録され、次回の起動時に自動で開きます（ブラウザが許可を取り消した場合は「再接続」を押します）。
 
 Safari・Firefox では `<input webkitdirectory>` で読み込みます。この場合は選択した時点のスナップショットで、変更の自動反映と次回の再表示はできません。
+
+## 論点マップのスキーマ
+
+論点マップを使う Wiki では、`CLAUDE.md` に次のような規則を書き、LLM に論点・立場・論拠を別々のページとして書かせます。
+`issue` / `supports` / `opposes` は、`type` が `position`・`argument` のページに書いたものだけを関係として読みます。
+`CLAUDE.md` の frontmatter の例で `type` の選択肢を定めている場合は、`issue`・`position`・`argument` も選択肢に加えます（加えないと Lint の「type の値の誤り」として指摘されます）。
+
+````markdown
+## 論点マップ（IBIS）
+
+論点・立場・論拠は 1 つずつ別のページにする。
+
+- 論点（問い）: `type: issue`
+- 論点に対する立場: `type: position` と、どの論点への立場かを `issue` に書く
+- 立場を支える・崩す論拠: `type: argument` と、支える立場を `supports`、崩す立場を `opposes` に書き、根拠の資料を `sources` に書く
+
+```yaml
+---
+title: 給食費を無償化すべきか
+type: issue
+---
+```
+
+```yaml
+---
+title: 所得制限を設けて無償化する
+type: position
+issue: "[[給食費を無償化すべきか]]"
+---
+```
+
+```yaml
+---
+title: 子育て世帯の負担が減る
+type: argument
+supports: ["[[所得制限を設けて無償化する]]"]
+sources: ["[[sources/市の家計調査]]"]
+---
+```
+````
 
 ## 読み込みの方針
 

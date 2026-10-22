@@ -13,6 +13,7 @@ import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useState } from '
 import { useHashRoute } from './app/useHashRoute'
 import { useSeenPages, type SeenPagesState } from './app/useSeenPages'
 import { useVaults, type AppDeps, type Vault } from './app/useVaults'
+import { ArgumentMapView } from './components/ArgumentMapView'
 import { CalloutsView } from './components/CalloutsView'
 import { DeferredPageView } from './components/DeferredPageView'
 import { FileTree } from './components/FileTree'
@@ -191,6 +192,9 @@ export default function App({ deps }: AppProps) {
           <a href={formatRoute({ view: 'callouts', vaultId: vault.id })} aria-current={route.view === 'callouts' ? 'page' : undefined}>
             未解決
           </a>
+          <a href={formatRoute({ view: 'arguments', vaultId: vault.id })} aria-current={route.view === 'arguments' ? 'page' : undefined}>
+            論点
+          </a>
           <a href={formatRoute({ view: 'lint', vaultId: vault.id })} aria-current={route.view === 'lint' ? 'page' : undefined}>
             Lint <span className="count">{issueCount}</span>
           </a>
@@ -336,6 +340,8 @@ function ViewContent({ vault, index, readText, readBlob, route, navigate, seenPa
       return <RecentView index={index} vaultId={vault.id} seenPages={seenPages} />
     case 'callouts':
       return <CalloutsView index={index} vaultId={vault.id} readBlob={readBlob} />
+    case 'arguments':
+      return <ArgumentMapView index={index} vaultId={vault.id} />
     case 'schema':
       return index.schema ? (
         <SchemaView schema={index.schema} index={index} vaultId={vault.id} heading={route.heading} readBlob={readBlob} />

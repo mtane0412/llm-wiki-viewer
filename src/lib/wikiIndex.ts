@@ -5,11 +5,13 @@
  * 選択したフォルダに `wiki/` があればそこを Wiki ルートとし、`raw/` を元資料として扱います。
  * `wiki/` が無い場合は、選択したフォルダ全体（`raw/` を除く）を Wiki とみなします。
  */
+import { argumentLintIssues, isArgumentPage, resolveRelations, type RelationKey } from './argumentMap'
 import { parseFrontmatter } from './frontmatter'
+import { parseLinkTargets, toOptionalString, toStringList } from './frontmatterValues'
 import { basename, dirname, pageNameOf, stripMarkdownExtension } from './path'
 import { createResolver, normalizeKey, type Resolver } from './resolver'
 import { parseFrontmatterRules, type FrontmatterRules } from './schemaRules'
-import { extractWikilinks, parseWikilink, type ExtractedWikilink } from './wikilink'
+import { extractWikilinks, type ExtractedWikilink } from './wikilink'
 
 /** 読み込んだ Markdown ファイルです。 */
 export interface MarkdownFile {
@@ -48,8 +50,11 @@ export interface WikiPage {
 
 /** ページから出ているリンクです。 */
 export interface PageLink extends ExtractedWikilink {
-  /** 本文中のリンクか、frontmatter の sources に書かれたリンクかの区別です。 */
-  origin: 'body' | 'frontmatter'
+  /**
+   * リンクの由来です。body は本文中のリンク、frontmatter は frontmatter の sources に書かれたリンク、
+   * relation は論点マップの関係（立場の issue、論拠の supports・opposes）です。
+   */
+  origin: 'body' | 'frontmatter' | 'relation'
   /** 解決したリンク先のパスです。解決できなければ null です。 */
   resolvedPath: string | null
 }
@@ -65,6 +70,14 @@ export type LintIssue =
   | { kind: 'invalid-type'; page: string; type: string }
   /** どの wiki ページからも参照されていない raw/ の元資料です（page は元資料のパスです）。 */
   | { kind: 'unreferenced-raw'; page: string }
+  /** 論点マップの関係のリンク先が無いか、type が合いません（actualType はリンク先が無ければ null、type が無ければ undefined です）。 */
+  | { kind: 'invalid-relation'; page: string; key: RelationKey; target: string; actualType: string | null | undefined }
+  /** 立場に issue が無いか、論拠に supports・opposes のどちらも無いことを示します。 */
+  | { kind: 'missing-relation'; page: string; key: 'issue' | 'supports-or-opposes' }
+  /** 賛成と反対の片方にしか論拠が無い立場です（missing は論拠が無い側です）。 */
+  | { kind: 'one-sided-position'; page: string; missing: 'supports' | 'opposes' }
+  /** sources の無い論拠です。 */
+  | { kind: 'unsourced-argument'; page: string }
 
 /** 未作成のページ（解決できないリンク先）と、そこへリンクしているページです。 */
 export interface RedLink {
@@ -162,32 +175,6 @@ export function isSpecialPage(path: string): boolean {
   return SPECIAL_PAGE_NAMES.has(pageNameOf(path))
 }
 
-/**
- * 値を文字列の配列として取り出します。単一の文字列は 1 要素の配列にします。
- * 要素は toOptionalString と同じく文字列にし（日付は YYYY-MM-DD）、空白だけの要素は除きます。
- */
-function toStringList(value: unknown): string[] {
-  const items = Array.isArray(value) ? value : typeof value === 'string' || value instanceof Date ? [value] : []
-  return items.map(toOptionalString).filter((item): item is string => item !== undefined && item.trim() !== '')
-}
-
-/** 値が空でなければ文字列にします。YAML が日付として解釈した値も文字列にします。 */
-function toOptionalString(value: unknown): string | undefined {
-  if (value instanceof Date) return value.toISOString().slice(0, 10)
-  if (value === null || value === undefined || value === '') return undefined
-  return String(value)
-}
-
-/** frontmatter の sources の各要素から wikilink のリンク先を取り出します。 */
-function parseSourceTargets(sources: string[]): string[] {
-  return sources
-    .map((source) => {
-      const match = /^\s*\[\[([^\]]+)\]\]\s*$/.exec(source)
-      return parseWikilink(match ? match[1] : source).target
-    })
-    .filter(Boolean)
-}
-
 /** ファイルのパスから、そのファイルが属する領域を判定します。どちらにも属さなければ null です。 */
 function areaOf(path: string, wikiRoot: string): WikiPage['area'] | null {
   if (path.startsWith('raw/')) return 'raw'
@@ -204,7 +191,6 @@ function areaOf(path: string, wikiRoot: string): WikiPage['area'] | null {
  */
 export function toPage(file: MarkdownFile, area: WikiPage['area']): { page: WikiPage; frontmatterError: string | undefined } {
   const { data, body, error } = parseFrontmatter(file.content)
-  const sourceList = toStringList(data.sources)
   return {
     page: {
       path: file.path,
@@ -217,7 +203,7 @@ export function toPage(file: MarkdownFile, area: WikiPage['area']): { page: Wiki
         .filter(Boolean),
       type: toOptionalString(data.type),
       updated: toOptionalString(data.updated),
-      sources: parseSourceTargets(sourceList),
+      sources: parseLinkTargets(data.sources),
       frontmatter: data,
       body,
       loaded: true,
@@ -270,9 +256,9 @@ export function isSourcePage(page: WikiPage, wikiRoot: string): boolean {
   return page.type === 'source' || relative.startsWith('sources/')
 }
 
-/** sources が必要なページかを判定します。目次類とソース要約ページ自体は対象外です。 */
+/** sources が必要なページかを判定します。目次類とソース要約ページ自体は対象外です。論拠の sources の欠けは論点マップの指摘として扱います。 */
 function requiresSources(page: WikiPage, wikiRoot: string): boolean {
-  if (page.area !== 'wiki' || isSpecialPage(page.path)) return false
+  if (page.area !== 'wiki' || isSpecialPage(page.path) || isArgumentPage(page)) return false
   return !isSourcePage(page, wikiRoot)
 }
 
@@ -316,17 +302,28 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
 
   const outgoing = new Map<string, PageLink[]>()
   // リンクの由来（本文 / frontmatter の sources）ごとに、リンク先 → リンク元の集合を集計します
-  const inboundSets: Record<PageLink['origin'], Map<string, Set<string>>> = { body: new Map(), frontmatter: new Map() }
+  const inboundSets: Record<PageLink['origin'], Map<string, Set<string>>> = { body: new Map(), frontmatter: new Map(), relation: new Map() }
   for (const page of pages) {
     const links: PageLink[] = [
       ...extractWikilinks(page.body).map((link) => ({ ...link, origin: 'body' as const })),
       ...page.sources.map((target) => ({ target, heading: undefined, alias: undefined, embed: false, origin: 'frontmatter' as const })),
     ].map((link) => ({ ...link, resolvedPath: resolve(link.target, page.path) }))
+    links.push(
+      ...resolveRelations(page, resolve, pageByPath).map(({ target, resolvedPath }) => ({
+        target,
+        heading: undefined,
+        alias: undefined,
+        embed: false,
+        origin: 'relation' as const,
+        resolvedPath,
+      })),
+    )
     outgoing.set(page.path, links)
 
     for (const link of links) {
       if (link.resolvedPath === null) {
-        if (page.area === 'wiki') issues.push({ kind: 'broken-link', page: page.path, target: link.target })
+        // 論点マップの関係のリンク先が無いことは、論点マップの指摘として扱います
+        if (page.area === 'wiki' && link.origin !== 'relation') issues.push({ kind: 'broken-link', page: page.path, target: link.target })
       } else if (link.resolvedPath !== page.path) {
         const sets = inboundSets[link.origin]
         const set = sets.get(link.resolvedPath) ?? new Set<string>()
@@ -350,8 +347,8 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     if (page.area !== 'wiki') continue
     let isOrphan = false
     if (!isSpecialPage(page.path)) {
-      // 本文のリンクと sources での参照のどちらかがあれば、孤立ページではありません
-      const inbound = [...(backlinks.get(page.path) ?? []), ...(citations.get(page.path) ?? [])]
+      // 本文のリンク・sources での参照・論点マップの関係のどれかがあれば、孤立ページではありません
+      const inbound = [...(backlinks.get(page.path) ?? []), ...(citations.get(page.path) ?? []), ...(inboundSets.relation.get(page.path) ?? [])]
       const hasWikiInbound = inbound.some((from) => pageByPath.get(from)?.area === 'wiki')
       isOrphan = !hasWikiInbound
       if (isOrphan) issues.push({ kind: 'orphan', page: page.path })
@@ -364,6 +361,8 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
       issues.push({ kind: 'missing-sources', page: page.path })
     }
   }
+
+  issues.push(...argumentLintIssues({ pages, pageByPath, resolve }))
 
   // 元資料の Markdown と Markdown 以外のファイルのうち、wiki ページの本文のリンク・埋め込みや sources で参照されていないものを指摘します。
   // raw のファイルどうしのリンクは、元資料が Wiki に取り込まれたことを示さないため数えません

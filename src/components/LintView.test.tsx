@@ -133,3 +133,46 @@ describe('LintView の取り込まれていない元資料', () => {
     expect(within(csvItem).queryByRole('link')).not.toBeInTheDocument()
   })
 })
+
+describe('LintView の論点マップの指摘', () => {
+  /** 関係のリンク先の誤り・欠け、偏りのある立場、sources の無い論拠を 1 つずつ含む Wiki です。 */
+  const argumentIndex = buildWikiIndex({
+    markdownFiles: [
+      { path: 'wiki/論点.md', content: '---\ntitle: 給食を無償化すべきか\ntype: issue\n---\n本文' },
+      { path: 'wiki/概念.md', content: '---\ntitle: 学校給食\ntype: concept\nsources: ["[[論点]]"]\n---\n本文' },
+      { path: 'wiki/賛成.md', content: '---\ntitle: 無償化に賛成\ntype: position\nissue: "[[論点]]"\n---\n本文' },
+      { path: 'wiki/誤った立場.md', content: '---\ntitle: 誤った立場\ntype: position\nissue: "[[概念]]"\n---\n本文' },
+      { path: 'wiki/宙に浮いた論拠.md', content: '---\ntitle: 宙に浮いた論拠\ntype: argument\nsources: ["[[論点]]"]\n---\n本文' },
+      { path: 'wiki/負担軽減.md', content: '---\ntitle: 負担が減る\ntype: argument\nsupports: "[[賛成]]"\n---\n本文' },
+    ],
+    unloadedMarkdownPaths: [],
+    assetPaths: [],
+  })
+
+  it('リンク先の type が合わない関係を、項目・リンク先・実際の type とともに表示する', () => {
+    render(<LintView index={argumentIndex} vaultId="v1" />)
+    const section = screen.getByRole('region', { name: /論点マップの関係の誤り/ })
+    const item = within(section).getByRole('link', { name: '誤った立場' }).closest('li')
+    expect(item).toHaveTextContent('issue')
+    expect(item).toHaveTextContent('概念')
+    expect(item).toHaveTextContent('concept')
+  })
+
+  it('関係の無い論拠を、欠けた項目とともに表示する', () => {
+    render(<LintView index={argumentIndex} vaultId="v1" />)
+    const section = screen.getByRole('region', { name: /論点マップの関係の欠け/ })
+    expect(within(section).getByRole('link', { name: '宙に浮いた論拠' }).closest('li')).toHaveTextContent('supports・opposes')
+  })
+
+  it('片方の論拠しか無い立場を、欠けている側とともに表示する', () => {
+    render(<LintView index={argumentIndex} vaultId="v1" />)
+    const section = screen.getByRole('region', { name: /議論の偏り/ })
+    expect(within(section).getByRole('link', { name: '無償化に賛成' }).closest('li')).toHaveTextContent('反対の論拠が無い')
+  })
+
+  it('sources の無い論拠を表示する', () => {
+    render(<LintView index={argumentIndex} vaultId="v1" />)
+    const section = screen.getByRole('region', { name: /sources の無い論拠/ })
+    expect(within(section).getByRole('link', { name: '負担が減る' })).toHaveAttribute('href', `#/v1/page/wiki/${encodeURIComponent('負担軽減')}.md`)
+  })
+})

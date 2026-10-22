@@ -42,17 +42,6 @@ const cookingWiki: FakeTree = {
   wiki: { 'index.md': '# 料理の目次\n\n[[出汁]]', '出汁.md': '---\ntitle: 出汁\nsources: ["[[a]]"]\n---\nシェルではなく昆布と鰹節。' },
 }
 
-/** 給食派と公園派に分かれ、全員が「通学路を安全にしてほしい」に賛成する投票を持つ Wiki です。 */
-const surveyWiki: FakeTree = {
-  wiki: { 'index.md': '# 住民アンケート\n\n[[raw/survey/votes.csv|投票の集計]]' },
-  raw: {
-    survey: {
-      'comments.csv': 'comment-id,comment-body\nc1,給食を無償にしてほしい\nc2,公園を増やしたい\nc3,通学路を安全にしてほしい',
-      'votes.csv': 'participant,c1,c2,c3\np1,1,-1,1\np2,1,-1,1\np3,-1,1,1\np4,-1,1,1',
-    },
-  },
-}
-
 describe('App', () => {
   beforeEach(() => {
     window.location.hash = ''
@@ -78,7 +67,6 @@ describe('App', () => {
           seenStore: createSeenStore(store),
           pickDirectory: options.supportsPicker === false ? null : pickDirectory,
           pollIntervalMs: options.pollIntervalMs ?? 60_000,
-          opinionAnalysis: null,
         }}
       />,
     )
@@ -121,44 +109,6 @@ describe('App', () => {
     expect(within(main).getByText('元資料')).toBeInTheDocument()
     expect(within(main).getByText('memo')).toBeInTheDocument()
     expect(within(main).getByText('#生メモ')).toBeInTheDocument()
-  })
-
-  it('raw/ の投票 CSV へのリンクを開くと、意見グループと合意点を表示する', async () => {
-    const { user } = renderApp({ pick: [createFakeFileSystem('survey-wiki', surveyWiki).root] })
-    await user.click(await screen.findByRole('button', { name: 'Wiki フォルダを開く' }))
-    const main = await screen.findByRole('main')
-    await user.click(await within(main).findByRole('link', { name: '投票の集計' }))
-    const consensus = await within(main).findByRole('region', { name: /合意点/ })
-    expect(within(consensus).getByText('通学路を安全にしてほしい')).toBeInTheDocument()
-  })
-
-  it('wiki/ に LLM が作った投票 CSV へのリンクを開くと、意見グループと合意点を表示する', async () => {
-    const llmSurveyWiki: FakeTree = {
-      wiki: {
-        'index.md': '# 住民アンケートの推定\n\n[[analyses/survey/votes.csv|推定した投票の集計]]',
-        analyses: {
-          survey: {
-            'comments.csv': 'comment-id,comment-body\nc1,給食を無償にしてほしい\nc2,公園を増やしたい\nc3,通学路を安全にしてほしい',
-            'votes.csv': 'participant,c1,c2,c3\np1,1,-1,1\np2,1,-1,1\np3,-1,1,1\np4,-1,1,1',
-          },
-        },
-      },
-    }
-    const { user } = renderApp({ pick: [createFakeFileSystem('llm-survey-wiki', llmSurveyWiki).root] })
-    await user.click(await screen.findByRole('button', { name: 'Wiki フォルダを開く' }))
-    const main = await screen.findByRole('main')
-    await user.click(await within(main).findByRole('link', { name: '推定した投票の集計' }))
-    const consensus = await within(main).findByRole('region', { name: /合意点/ })
-    expect(within(consensus).getByText('通学路を安全にしてほしい')).toBeInTheDocument()
-  })
-
-  it('raw/ の JSON ファイルへのリンクを開くと、意見クラスタの JSON として表示する', async () => {
-    const wiki: FakeTree = { wiki: { 'index.md': '[[raw/clusters.json|分析結果]]' }, raw: { 'clusters.json': '{"hello": 1}' } }
-    const { user } = renderApp({ pick: [createFakeFileSystem('cluster-wiki', wiki).root] })
-    await user.click(await screen.findByRole('button', { name: 'Wiki フォルダを開く' }))
-    const main = await screen.findByRole('main')
-    await user.click(await within(main).findByRole('link', { name: '分析結果' }))
-    expect(await within(main).findByRole('alert')).toHaveTextContent('意見クラスタの JSON の形式ではありません')
   })
 
   it('lint 画面に壊れたリンクと孤立ページを表示する', async () => {

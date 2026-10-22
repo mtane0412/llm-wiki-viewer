@@ -41,9 +41,28 @@ describe('buildWikiIndex', () => {
     expect(index.homePath).toBe('wiki/index.md')
   })
 
-  it('本文と frontmatter の sources からバックリンクを集計する', () => {
-    expect(index.backlinks.get('wiki/sources/codex-repo.md')).toEqual(['wiki/concepts/tool-use.md', 'wiki/index.md'])
+  it('本文の wikilink からのリンクをバックリンクとして集計する', () => {
+    // 前提: codex-repo へは index.md が本文から、tool-use が frontmatter の sources からリンクしています
+    expect(index.backlinks.get('wiki/sources/codex-repo.md')).toEqual(['wiki/index.md'])
     expect(index.backlinks.get('raw/notes/codex.md')).toEqual(['wiki/sources/codex-repo.md'])
+  })
+
+  it('frontmatter の sources からの参照を、バックリンクとは別に根拠としての被参照として集計する', () => {
+    expect(index.citations.get('wiki/sources/codex-repo.md')).toEqual(['wiki/concepts/tool-use.md'])
+    expect(index.citations.has('raw/notes/codex.md')).toBe(false)
+  })
+
+  it('sources からしか参照されていないページも孤立ページとはみなさない', () => {
+    const citedOnly = buildWikiIndex({
+      markdownFiles: [
+        { path: 'wiki/index.md', content: '[[concepts/agent]]' },
+        { path: 'wiki/concepts/agent.md', content: '---\nsources: ["[[sources/paper]]"]\n---\n本文' },
+        { path: 'wiki/sources/paper.md', content: '---\ntype: source\n---\n論文の要約' },
+      ],
+      unloadedMarkdownPaths: [],
+      assetPaths: [],
+    })
+    expect(citedOnly.issues).not.toContainEqual({ kind: 'orphan', page: 'wiki/sources/paper.md' })
   })
 
   it('壊れたリンクを lint の指摘にする', () => {

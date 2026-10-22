@@ -80,8 +80,13 @@ export interface WikiIndex {
   assetPaths: string[]
   /** ページごとの出ているリンクです。 */
   outgoing: Map<string, PageLink[]>
-  /** ページごとの、そのページへリンクしているページのパス（辞書順・重複なし）です。 */
+  /** ページごとの、本文の wikilink でそのページへリンクしているページのパス（辞書順・重複なし）です。 */
   backlinks: Map<string, string[]>
+  /**
+   * ページごとの、frontmatter の sources でそのページを根拠に挙げているページのパス（辞書順・重複なし）です。
+   * 本文のリンクとは別に集計し、ソース要約ページで「このソースを根拠にしているページ」として表示します。
+   */
+  citations: Map<string, string[]>
   /** lint の指摘です。 */
   issues: LintIssue[]
   /** 最初に表示するページ（index.md など）のパスです。 */
@@ -198,11 +203,25 @@ function pickHomePath(pages: WikiPage[], wikiRoot: string, indexPagePath: string
   return indexPagePath ?? findRootPage(pages, wikiRoot, 'overview') ?? pages.find((page) => page.area === 'wiki')?.path ?? null
 }
 
+/**
+ * ページがソース要約ページかを判定します。
+ *
+ * frontmatter の type が source のページと、Wiki ルート直下の sources/ フォルダにあるページをソース要約ページとみなします。
+ *
+ * @param page - 判定するページ
+ * @param wikiRoot - Wiki ルートのフォルダ（wiki/ が無い場合は空文字）
+ * @returns ソース要約ページなら true
+ */
+export function isSourcePage(page: WikiPage, wikiRoot: string): boolean {
+  if (page.area !== 'wiki') return false
+  const relative = wikiRoot ? page.path.slice(wikiRoot.length + 1) : page.path
+  return page.type === 'source' || relative.startsWith('sources/')
+}
+
 /** sources が必要なページかを判定します。目次類とソース要約ページ自体は対象外です。 */
 function requiresSources(page: WikiPage, wikiRoot: string): boolean {
   if (page.area !== 'wiki' || isSpecialPage(page.path)) return false
-  const relative = wikiRoot ? page.path.slice(wikiRoot.length + 1) : page.path
-  return page.type !== 'source' && !relative.startsWith('sources/')
+  return !isSourcePage(page, wikiRoot)
 }
 
 /**
@@ -236,7 +255,8 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
   const resolve = createResolver([...pages, ...assetEntries], wikiRoot)
 
   const outgoing = new Map<string, PageLink[]>()
-  const backlinkSets = new Map<string, Set<string>>()
+  // リンクの由来（本文 / frontmatter の sources）ごとに、リンク先 → リンク元の集合を集計します
+  const inboundSets: Record<PageLink['origin'], Map<string, Set<string>>> = { body: new Map(), frontmatter: new Map() }
   for (const page of pages) {
     const links: PageLink[] = [
       ...extractWikilinks(page.body).map((link) => ({ ...link, origin: 'body' as const })),
@@ -248,13 +268,16 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
       if (link.resolvedPath === null) {
         if (page.area === 'wiki') issues.push({ kind: 'broken-link', page: page.path, target: link.target })
       } else if (link.resolvedPath !== page.path) {
-        const set = backlinkSets.get(link.resolvedPath) ?? new Set<string>()
+        const sets = inboundSets[link.origin]
+        const set = sets.get(link.resolvedPath) ?? new Set<string>()
         set.add(page.path)
-        backlinkSets.set(link.resolvedPath, set)
+        sets.set(link.resolvedPath, set)
       }
     }
   }
-  const backlinks = new Map([...backlinkSets].map(([path, set]) => [path, [...set].sort((a, b) => a.localeCompare(b))]))
+  const toSortedLists = (sets: Map<string, Set<string>>) => new Map([...sets].map(([path, set]) => [path, [...set].sort((a, b) => a.localeCompare(b))]))
+  const backlinks = toSortedLists(inboundSets.body)
+  const citations = toSortedLists(inboundSets.frontmatter)
 
   // index.md が無い Wiki では、全ページを未掲載と扱わずに判定自体を行いません（画面でその旨を示します）
   const indexPagePath = findRootPage(pages, wikiRoot, 'index')
@@ -267,7 +290,9 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     if (page.area !== 'wiki') continue
     let isOrphan = false
     if (!isSpecialPage(page.path)) {
-      const hasWikiInbound = (backlinks.get(page.path) ?? []).some((from) => pageByPath.get(from)?.area === 'wiki')
+      // 本文のリンクと sources での参照のどちらかがあれば、孤立ページではありません
+      const inbound = [...(backlinks.get(page.path) ?? []), ...(citations.get(page.path) ?? [])]
+      const hasWikiInbound = inbound.some((from) => pageByPath.get(from)?.area === 'wiki')
       isOrphan = !hasWikiInbound
       if (isOrphan) issues.push({ kind: 'orphan', page: page.path })
     }
@@ -287,6 +312,7 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     assetPaths: input.assetPaths,
     outgoing,
     backlinks,
+    citations,
     issues,
     homePath: pickHomePath(pages, wikiRoot, indexPagePath),
     indexPagePath,

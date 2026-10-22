@@ -2,6 +2,8 @@
  * Wiki の 1 ページを表示するコンポーネントです。
  *
  * frontmatter のメタ情報（type・tags・updated・sources）、本文、バックリンク、見出しの目次を表示します。
+ * ソース要約ページと、frontmatter の sources で根拠に挙げられているページでは、
+ * 根拠にしているページ（sources 由来の被参照）を本文のバックリンクと分けて表示します。
  * Wiki ルート直下の log.md（作業ログ）は、本文の代わりにタイムラインとして表示します（目次は表示しません）。
  * `[[page#見出し]]` で開いた場合は、その見出しまでスクロールします。
  */
@@ -11,7 +13,7 @@ import { basename } from '../lib/path'
 import { createWikilinkOptions } from '../lib/remarkWikilink'
 import { formatRoute } from '../lib/route'
 import { extractHeadings } from '../lib/toc'
-import type { WikiIndex, WikiPage } from '../lib/wikiIndex'
+import { isSourcePage, type WikiIndex, type WikiPage } from '../lib/wikiIndex'
 import { LogTimeline } from './LogTimeline'
 import { MarkdownView } from './MarkdownView'
 import { TableOfContents } from './TableOfContents'
@@ -40,9 +42,44 @@ function PageLink({ index, vaultId, path }: { index: WikiIndex; vaultId: string;
   )
 }
 
+/** LinkListSection の引数です。 */
+interface LinkListSectionProps {
+  /** 区画の見出しと、区画のアクセシブルな名前です。 */
+  label: string
+  paths: string[]
+  /** ページが 1 件も無いときに表示する文です。 */
+  emptyText: string
+  index: WikiIndex
+  vaultId: string
+}
+
+/** ページの下部に置く、ページへのリンクの一覧の区画です（バックリンクと、根拠にしているページ）。 */
+function LinkListSection({ label, paths, emptyText, index, vaultId }: LinkListSectionProps) {
+  return (
+    <section className="backlinks" aria-label={label}>
+      <h2>
+        {label} <span className="count">{paths.length}</span>
+      </h2>
+      {paths.length === 0 ? (
+        <p className="muted">{emptyText}</p>
+      ) : (
+        <ul>
+          {paths.map((path) => (
+            <li key={path}>
+              <PageLink index={index} vaultId={vaultId} path={path} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 /** Wiki の 1 ページです。 */
 export function PageView({ page, index, vaultId, heading, readBlob }: PageViewProps) {
   const backlinks = index.backlinks.get(page.path) ?? []
+  const citations = index.citations.get(page.path) ?? []
+  const isSource = isSourcePage(page, index.wikiRoot)
   const isLog = page.area === 'wiki' && isLogPage(page.path, index.wikiRoot)
   // 文字列が空の見出し（画像だけの見出しなど）は目次から移動できないため除きます
   const headings = useMemo(
@@ -128,22 +165,22 @@ export function PageView({ page, index, vaultId, heading, readBlob }: PageViewPr
           <MarkdownView markdown={page.body} index={index} pagePath={page.path} vaultId={vaultId} readBlob={readBlob} />
         )}
 
-        <section className="backlinks" aria-label="バックリンク">
-          <h2>
-            バックリンク <span className="count">{backlinks.length}</span>
-          </h2>
-          {backlinks.length === 0 ? (
-            <p className="muted">このページにリンクしているページはありません。</p>
-          ) : (
-            <ul>
-              {backlinks.map((path) => (
-                <li key={path}>
-                  <PageLink index={index} vaultId={vaultId} path={path} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        {(isSource || citations.length > 0) && (
+          <LinkListSection
+            label={isSource ? 'このソースを根拠にしているページ' : 'このページを根拠にしているページ'}
+            paths={citations}
+            emptyText="このソースを sources に挙げているページはありません。"
+            index={index}
+            vaultId={vaultId}
+          />
+        )}
+        <LinkListSection
+          label="バックリンク"
+          paths={backlinks}
+          emptyText="このページにリンクしているページはありません。"
+          index={index}
+          vaultId={vaultId}
+        />
       </article>
     </div>
   )

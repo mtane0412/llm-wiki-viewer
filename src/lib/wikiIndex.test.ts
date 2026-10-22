@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildWikiIndex } from './wikiIndex'
+import { buildWikiIndex, rankRedLinks } from './wikiIndex'
 
 /** frontmatter つきの Markdown を組み立てるテスト用ヘルパーです。 */
 function page(frontmatter: string, body: string): string {
@@ -84,5 +84,49 @@ describe('buildWikiIndex', () => {
     expect(flat.wikiRoot).toBe('')
     expect(flat.homePath).toBe('INDEX.md')
     expect(flat.backlinks.get('LLM Wiki.md')).toEqual(['INDEX.md'])
+  })
+})
+
+describe('rankRedLinks', () => {
+  /** 未作成のページへのリンクを、表記ゆれを含めて複数のページに書いた Wiki です。 */
+  const redLinkWiki = buildWikiIndex({
+    markdownFiles: [
+      { path: 'wiki/index.md', content: '[[RAG]] と [[検索拡張生成]] と [[RAG]]（同じページから 2 回）' },
+      { path: 'wiki/concepts/agent.md', content: '[[rag]] を使う。[[検索拡張生成]] も参照。' },
+      { path: 'wiki/concepts/memory.md', content: '[[RAG.md]] と [[ベクトル DB]]' },
+      { path: 'wiki/concepts/tool-use.md', content: '[[concepts/agent]] は作成済み' },
+    ],
+    unloadedMarkdownPaths: [],
+    assetPaths: [],
+  })
+  const ranking = rankRedLinks(redLinkWiki.issues)
+
+  it('未作成のリンク先を、参照元ページ数の多い順に並べる', () => {
+    expect(ranking.map((item) => [item.target, item.pages.length])).toEqual([
+      ['RAG', 3],
+      ['検索拡張生成', 2],
+      ['ベクトル DB', 1],
+    ])
+  })
+
+  it('大文字小文字と拡張子 .md の違いはリゾルバと同じく同じリンク先として数え、最も多く書かれた表記で示す', () => {
+    // 前提: 「RAG」は 2 回、「rag」と「RAG.md」は 1 回ずつ書かれています
+    expect(ranking[0]).toEqual({ target: 'RAG', pages: ['wiki/concepts/agent.md', 'wiki/concepts/memory.md', 'wiki/index.md'] })
+  })
+
+  it('同じページから同じリンク先へ複数回リンクしても、参照元は 1 ページとして数える', () => {
+    expect(ranking.find((item) => item.target === '検索拡張生成')?.pages).toEqual(['wiki/concepts/agent.md', 'wiki/index.md'])
+  })
+
+  it('作成済みのページへのリンクは含めない', () => {
+    expect(ranking.some((item) => item.target === 'concepts/agent')).toBe(false)
+  })
+
+  it('参照数が同じリンク先は、リンク先の文字列の順に並べる', () => {
+    const tie = rankRedLinks([
+      { kind: 'broken-link', page: 'wiki/a.md', target: '未作成B' },
+      { kind: 'broken-link', page: 'wiki/a.md', target: '未作成A' },
+    ])
+    expect(tie.map((item) => item.target)).toEqual(['未作成A', '未作成B'])
   })
 })

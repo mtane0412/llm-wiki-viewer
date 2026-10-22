@@ -671,6 +671,22 @@ details[open] > summary::before {
   border-top: 1px solid var(--border);
 }
 
+/* 未作成ページの参照元は、リンク先の下に罫線なしで横に並べます */
+.red-link-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.9rem;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.lint-list .red-link-sources li {
+  padding: 0;
+  border-top: 0;
+}
+
 .lint-path {
   display: block;
   font-family: var(--font-mono);

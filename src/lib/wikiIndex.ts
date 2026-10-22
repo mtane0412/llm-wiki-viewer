@@ -7,7 +7,7 @@
  */
 import { parseFrontmatter } from './frontmatter'
 import { basename, dirname, stripMarkdownExtension } from './path'
-import { createResolver, type Resolver } from './resolver'
+import { createResolver, normalizeKey, type Resolver } from './resolver'
 import { extractWikilinks, parseWikilink, type ExtractedWikilink } from './wikilink'
 
 /** 読み込んだ Markdown ファイルです。 */
@@ -59,6 +59,14 @@ export type LintIssue =
   | { kind: 'orphan'; page: string }
   | { kind: 'missing-sources'; page: string }
   | { kind: 'frontmatter-error'; page: string; message: string }
+
+/** 未作成のページ（解決できないリンク先）と、そこへリンクしているページです。 */
+export interface RedLink {
+  /** リンク先の文字列です。表記ゆれがある場合は、最も多く書かれた表記（同数なら文字列の順で先のもの）です。 */
+  target: string
+  /** リンクしているページのパス（辞書順・重複なし）です。 */
+  pages: string[]
+}
 
 /** Wiki 全体の索引です。 */
 export interface WikiIndex {
@@ -254,4 +262,33 @@ export function buildWikiIndex(input: WikiIndexInput): WikiIndex {
     homePath: pickHomePath(pages, wikiRoot),
     resolve,
   }
+}
+
+/**
+ * 壊れたリンクの指摘を、未作成のリンク先ごとにまとめて参照元ページ数の多い順に並べます。
+ *
+ * リンク先の表記ゆれ（大文字小文字・拡張子 .md・前後の空白）は、リゾルバの照合規則（normalizeKey）に揃えて
+ * 同じリンク先として数えます。同じページから同じリンク先へ複数回リンクしても、参照元は 1 ページと数えます。
+ *
+ * @param issues - lint の指摘（壊れたリンク以外の指摘は無視します）
+ * @returns 参照元ページ数の多い順（同数ならリンク先の文字列の順）に並べた未作成のリンク先
+ */
+export function rankRedLinks(issues: LintIssue[]): RedLink[] {
+  const byKey = new Map<string, { spellings: Map<string, number>; pages: Set<string> }>()
+  for (const issue of issues) {
+    if (issue.kind !== 'broken-link') continue
+    const key = normalizeKey(issue.target)
+    const entry = byKey.get(key) ?? { spellings: new Map<string, number>(), pages: new Set<string>() }
+    entry.spellings.set(issue.target, (entry.spellings.get(issue.target) ?? 0) + 1)
+    entry.pages.add(issue.page)
+    byKey.set(key, entry)
+  }
+  return [...byKey.values()]
+    .map(({ spellings, pages }) => ({ target: mostFrequent(spellings), pages: [...pages].sort((a, b) => a.localeCompare(b)) }))
+    .sort((a, b) => b.pages.length - a.pages.length || a.target.localeCompare(b.target))
+}
+
+/** 出現回数の最も多い表記を返します。同数なら文字列の順で先のものです。 */
+function mostFrequent(counts: Map<string, number>): string {
+  return [...counts].sort(([a, countA], [b, countB]) => countB - countA || a.localeCompare(b))[0][0]
 }

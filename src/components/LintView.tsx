@@ -1,12 +1,13 @@
 /**
  * lint の指摘（壊れたリンク・孤立ページ・sources 未記載・frontmatter エラー）を一覧表示するコンポーネントです。
+ * 壊れたリンクは、未作成のリンク先ごとに参照数の多い順に並べた「未作成ページ（赤リンク）」としても表示します。
  *
  * LLM Wiki の Lint 操作で LLM に直させる前に、人が全体の健全性を確認するための画面です。
  */
 import type { ReactNode } from 'react'
-import { useId } from 'react'
+import { useId, useMemo } from 'react'
 import { formatRoute } from '../lib/route'
-import type { LintIssue, WikiIndex } from '../lib/wikiIndex'
+import { rankRedLinks, type LintIssue, type WikiIndex } from '../lib/wikiIndex'
 
 /** LintView の引数です。 */
 export interface LintViewProps {
@@ -38,6 +39,7 @@ function IssueSection({ title, description, count, children }: { title: string; 
 
 /** lint の指摘の一覧です。 */
 export function LintView({ index, vaultId }: LintViewProps) {
+  const redLinks = useMemo(() => rankRedLinks(index.issues), [index.issues])
   const pageLink = (path: string) => (
     <a href={formatRoute({ view: 'page', vaultId, path, heading: undefined })}>{index.pageByPath.get(path)?.title ?? path}</a>
   )
@@ -46,6 +48,25 @@ export function LintView({ index, vaultId }: LintViewProps) {
     <div className="lint">
       <h1>Lint</h1>
       <p className="muted">{`${index.pages.filter((page) => page.area === 'wiki').length} ページ中、${index.issues.length} 件の指摘があります。`}</p>
+      <IssueSection
+        title="未作成ページ（赤リンク）"
+        description="リンクされているのにページが無いリンク先を、参照元のページ数の多い順に並べています。参照の多いものほど、独立したページにする候補です。"
+        count={redLinks.length}
+      >
+        <ol className="lint-list">
+          {redLinks.map((redLink) => (
+            <li key={redLink.target}>
+              <code className="lint-target">{redLink.target}</code>
+              <span className="count">{`${redLink.pages.length} ページ`}</span>
+              <ul className="red-link-sources">
+                {redLink.pages.map((path) => (
+                  <li key={path}>{pageLink(path)}</li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ol>
+      </IssueSection>
       {SECTIONS.map((section) => {
         const issues = index.issues.filter((issue) => issue.kind === section.kind)
         // 壊れたリンクはページごとにまとめて表示します

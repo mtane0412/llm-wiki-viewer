@@ -220,11 +220,14 @@ export default function App({ deps }: AppProps) {
 
       <main className="content">
         {errorBanner}
-        {route.view === 'search' ? (
-          <SearchView query={route.query} results={routeResults} showVaultName={route.all} />
-        ) : (
-          <MainContent vault={vault} route={route} navigate={navigate} seenPages={seenPages} onReconnect={() => void api.reconnect(vault.id)} />
-        )}
+        <MainContent
+          vault={vault}
+          route={route}
+          navigate={navigate}
+          seenPages={seenPages}
+          searchResults={routeResults}
+          onReconnect={() => void api.reconnect(vault.id)}
+        />
       </main>
     </div>
   )
@@ -254,11 +257,16 @@ interface MainContentProps {
   route: Route
   navigate: (hash: string) => void
   seenPages: SeenPagesState
+  /** 検索結果の画面（URL で指定）に表示する結果です。 */
+  searchResults: VaultSearchResult[]
   onReconnect: () => void
 }
 
-/** 右側の主要な表示領域です。Wiki の状態と画面の種類に応じて表示を切り替えます。 */
-function MainContent({ vault, route, navigate, seenPages, onReconnect }: MainContentProps) {
+/**
+ * 右側の主要な表示領域です。Wiki の状態と画面の種類に応じて表示を切り替えます。
+ * 検索結果の画面も、Wiki の再接続や読み込みエラーの表示を優先します。
+ */
+function MainContent({ vault, route, navigate, seenPages, searchResults, onReconnect }: MainContentProps) {
   if (vault.status === 'needs-permission') {
     return (
       <div className="notice">
@@ -286,6 +294,14 @@ function MainContent({ vault, route, navigate, seenPages, onReconnect }: MainCon
       {vault.error}
     </p>
   )
+  if (route.view === 'search') {
+    return (
+      <>
+        {reloadWarning}
+        <SearchView query={route.query} results={searchResults} showVaultName={route.all} />
+      </>
+    )
+  }
   return (
     <>
       {reloadWarning}

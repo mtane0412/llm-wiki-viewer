@@ -309,6 +309,21 @@ describe('App', () => {
     expect(within(main).getByRole('link', { name: 'Tool use' })).toBeInTheDocument()
   })
 
+  it('読み取り許可が切れた Wiki の検索結果の URL では、検索結果の代わりに再接続ボタンを表示する', async () => {
+    // 前提: 登録済みだが読み取り許可が切れている Wiki の検索結果の URL を直接開く
+    const store = createMemoryStore()
+    const fs = createFakeFileSystem('agent-wiki', agentWiki, { permission: 'prompt' })
+    const registered = await createVaultRegistry(store).add(fs.root)
+    window.location.hash = `#/${registered.id}/search?q=${encodeURIComponent('シェル')}`
+
+    const { user } = renderApp({ store })
+    await user.click(await screen.findByRole('button', { name: 'agent-wiki に再接続' }))
+
+    // 検証: 再接続すると、検索結果を表示する
+    const main = screen.getByRole('main')
+    expect(await within(main).findByRole('link', { name: 'Tool use' })).toBeInTheDocument()
+  })
+
   it('すべての Wiki を対象にした検索結果の URL では、ほかの Wiki のページも表示する', async () => {
     const { user } = renderApp({
       pick: [createFakeFileSystem('agent-wiki', agentWiki).root, createFakeFileSystem('cooking-wiki', cookingWiki).root],

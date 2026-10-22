@@ -54,7 +54,8 @@ describe('MarkdownView', () => {
     renderMarkdown('[[存在しないページ]]')
     const broken = screen.getByText('存在しないページ')
     expect(broken).toHaveClass('wikilink-broken')
-    expect(broken).toHaveAttribute('title', 'リンク先が見つかりません: 存在しないページ')
+    // 未作成であることは、ホバープレビューで示します（「wikilink のホバープレビュー」のテストを参照）
+    expect(broken).toHaveAttribute('data-wikilink-target', '存在しないページ')
   })
 
   it('コードの中の [[...]] はリンクにしない', () => {
@@ -175,6 +176,17 @@ describe('MarkdownView', () => {
       expect(document.activeElement).toHaveClass('wikilink-broken')
       expect(document.activeElement).toHaveTextContent('存在しないページ')
       expect(screen.getByRole('tooltip')).toHaveTextContent('このページはまだ作成されていません。')
+      // ブラウザ標準のツールチップと重ならないよう、title 属性は付けません
+      expect(document.activeElement).not.toHaveAttribute('title')
+    })
+
+    it('マウスで開いたプレビューも、フォーカスが無いまま Escape で閉じられる', async () => {
+      const user = userEvent.setup()
+      renderMarkdown('参照: [[concepts/tool-use]]')
+      await user.hover(screen.getByRole('link', { name: 'Tool use' }))
+      expect(screen.getByRole('tooltip')).toBeInTheDocument()
+      await user.keyboard('{Escape}')
+      expect(screen.queryByRole('tooltip')).toBeNull()
     })
   })
 })

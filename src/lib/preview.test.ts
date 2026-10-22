@@ -30,9 +30,36 @@ const index = buildWikiIndex({
       ].join('\n'),
     },
     { path: 'wiki/concepts/long.md', content: `---\ntitle: 長いページ\n---\n${'あ'.repeat(300)}` },
+    { path: 'wiki/concepts/memory.md', content: '---\ntitle: 記憶\n---\n本文' },
+    {
+      path: 'wiki/concepts/mixed.md',
+      content: [
+        '---',
+        'title: 混在',
+        '---',
+        '- りんご',
+        '- バナナ',
+        '',
+        '| 列 1 | 列 2 |',
+        '|---|---|',
+        '| 値 1 | 値 2 |',
+        '',
+        '<div>生の HTML</div>',
+        '',
+        '`[[concepts/memory|コードの中]]` と ![[diagram.png]] と [[concepts/memory]]',
+        '',
+        '```sh',
+        'echo コードブロック',
+        '```',
+        '',
+        '## [[concepts/memory]] の使い方',
+        '',
+        '見出しに wikilink を含む節。',
+      ].join('\n'),
+    },
   ],
   unloadedMarkdownPaths: ['raw/notes/memo.md'],
-  assetPaths: [],
+  assetPaths: ['raw/assets/diagram.png'],
 })
 
 describe('previewOf', () => {
@@ -41,7 +68,7 @@ describe('previewOf', () => {
       kind: 'page',
       title: 'ツール使用',
       type: 'concept',
-      excerpt: 'エージェントが シェル と エディタ を使う仕組みです。 承認 危険な操作の前に concepts/approval を求めます。 例外 読み取りだけの操作は承認を省きます。 関連 concepts/memory',
+      excerpt: 'エージェントが シェル と エディタ を使う仕組みです。 承認 危険な操作の前に concepts/approval を求めます。 例外 読み取りだけの操作は承認を省きます。 関連 記憶',
     })
   })
 
@@ -50,6 +77,16 @@ describe('previewOf', () => {
       heading: '承認',
       excerpt: '危険な操作の前に concepts/approval を求めます。 例外 読み取りだけの操作は承認を省きます。',
     })
+  })
+
+  it('リストの項目と表のセルは空白で区切り、コード・HTML・画像の埋め込みは含めず、wikilink は本文と同じくタイトルで表す', () => {
+    expect(previewOf(index, 'wiki/concepts/mixed.md', undefined)).toMatchObject({
+      excerpt: 'りんご バナナ 列 1 列 2 値 1 値 2 [[concepts/memory|コードの中]] と と 記憶 記憶 の使い方 見出しに wikilink を含む節。',
+    })
+  })
+
+  it('見出しの中の wikilink は、本文の見出しの id と同じくタイトルに置き換えて照合する', () => {
+    expect(previewOf(index, 'wiki/concepts/mixed.md', '記憶 の使い方')).toMatchObject({ excerpt: '見出しに wikilink を含む節。' })
   })
 
   it('長い本文は決まった文字数で切り、末尾に … を付ける', () => {

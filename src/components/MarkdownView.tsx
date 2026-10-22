@@ -146,10 +146,11 @@ export function MarkdownView({ markdown, index, pagePath, vaultId, readBlob, sel
         if (internal) return internalLink(internal, { className: 'wikilink' }, children)
         return <span className="wikilink-broken" title={`リンク先が見つかりません: ${href}`}>{children}</span>
       },
-      span({ children, node: _node, ...rest }) {
+      span({ children, node: _node, title, ...rest }) {
         const target = (rest as Record<string, unknown>)['data-wikilink-target']
-        if (typeof target !== 'string') return <span {...rest}>{children}</span>
-        // 未作成の wikilink は、キーボードでもプレビューを開けるようにフォーカスできる要素にします
+        if (typeof target !== 'string') return <span title={title} {...rest}>{children}</span>
+        // 未作成の wikilink は、キーボードでもプレビューを開けるようにフォーカスできる要素にします。
+        // ブラウザ標準のツールチップとプレビューが重ならないよう、title 属性は付けません
         return (
           <LinkPreview
             index={index}
